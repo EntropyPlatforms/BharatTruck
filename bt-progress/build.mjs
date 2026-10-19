@@ -10,8 +10,13 @@
 //                                         else the previous green run), otherwise "deploy"
 //   • open, non-draft PRs on main      → status "review"
 //   • manual-entries.json              → documents delivered, "Up next" items (status "next")
-//   • overrides.json                   → client-language wording for PRs that predate the
-//                                         PR template's client-log block, and `hidden` flags
+//   • overrides.json                   → client-language wording / `hidden` flags by PR number
+//   • history-entries.json             → the frozen log from the previous repository
+//                                         (Entropy-LLP/bharattruck, PRs merged 2026-09-19 →
+//                                         2026-10-17), all live. The code moved here as one commit
+//                                         on 2026-10-19 without its PRs, so this file keeps the
+//                                         client's history; its old PR numbers are dropped because
+//                                         this repository's numbering restarted at #1.
 //
 // Client wording comes from a block in the PR description (see .github/pull_request_template.md):
 //
@@ -198,7 +203,8 @@ export function buildEntries({ merged, open, lastSuccessSha }, { overrides, manu
 async function main() {
   const source = await loadSource()
   const overrides = readJson('overrides.json', {})
-  const manual = readJson('manual-entries.json', [])
+  // The previous repository's log rides along as manual entries (status "live").
+  const manual = [...readJson('manual-entries.json', []), ...readJson('history-entries.json', [])]
   const { entries, liveSha } = buildEntries(source, { overrides, manual, since: config.since, head: headSha, ok: deployOk })
 
   const out = {
