@@ -3,6 +3,9 @@
 /**
  * (i) beside the quoted price — the rough working behind the number, only on request.
  *
+ * Opens across the full width of the price row (the caller positions it), so it never runs off
+ * a narrow card.
+ *
  * Three round lines that add up to the quote exactly: fuel, driver, and "running, tolls &
  * handling". The platform's share is part of the third line, never a line of its own, and there
  * is no cost floor, market rate or margin here — one price, and roughly where it goes. The
@@ -66,7 +69,9 @@ export default function QuoteRoughBreakdown({ quote }: { quote: PriceQuote }) {
   const total = lines.reduce((s, l) => s + l.amount, 0)
 
   return (
-    <div ref={box} className="relative">
+    // Not "relative": the panel anchors to the price row (the caller makes it relative), so it
+    // spans the whole price card instead of starting at the (i) and running off the edge.
+    <div ref={box}>
       <button
         type="button"
         aria-label="How this price is worked out"
@@ -77,7 +82,7 @@ export default function QuoteRoughBreakdown({ quote }: { quote: PriceQuote }) {
         <Info className="w-4 h-4" />
       </button>
       {open && (
-        <div role="dialog" aria-label="Rough working of the price" className="absolute left-0 top-full z-20 mt-1.5 w-72 rounded-xl border border-gray-200 bg-white p-3.5 shadow-lg">
+        <div role="dialog" aria-label="Rough working of the price" className="absolute inset-x-0 top-full z-20 mt-1.5 rounded-xl border border-gray-200 bg-white p-3.5 shadow-lg">
           <p className="text-xs font-semibold text-gray-900">Roughly where the price goes</p>
           <dl className="mt-2 space-y-1.5">
             {lines.map((l) => (

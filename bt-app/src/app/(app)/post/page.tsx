@@ -716,7 +716,7 @@ export default function PostLoadPage() {
                     <span className="text-sm font-semibold text-gray-700">{priceQuoteHeading(quote, bookingType)}</span>
                     {advisory && <span className={pill('amber')}>Reference, not binding</span>}
                   </div>
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="relative mt-1 flex items-center gap-2">
                     <p className="text-[2.125rem] leading-tight font-extrabold text-gray-900 tabular-nums">{inr(quote.quoted_price)}</p>
                     {/* (i) — the rough working behind the number, on request (2026-10-17). Three
                         round lines that add up to the quote; the platform's share sits inside
