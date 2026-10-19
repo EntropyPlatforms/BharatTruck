@@ -1,0 +1,447 @@
+name: deploy
+
+# =============================================================================
+#  Continuous Deploy — monorepo → GCP Cloud Run (asia-south1)
+# =============================================================================
+# Fires on push to `main`. Path-filtered so ONLY changed services/apps rebuild+deploy
+# (mirrors ci.yml's dorny/paths-filter style). Two deploy paths:
+#
+#   • Backend services (bt-gateway + the bt-*-service dirs)
+#       `gcloud builds submit --config cloudbuild.yaml` builds the service's Dockerfile with the
+#       REPO ROOT as context, then `gcloud run deploy --image`. Root context is REQUIRED:
+#       bt-booking-service and bt-tracking-service depend on `file:../packages/shared`, which
+#       cannot resolve inside a single-service context (the old `--source <dir>` never built them).
+#       NO env vars are set here: a source/image deploy PRESERVES existing Cloud Run env,
+#       runtime service account, port and scaling. When a service gains a NEW env var, set it
+#       ONCE, manually:  gcloud run services update <svc> --update-env-vars KEY=VALUE
+#       (never add --set-env-vars to this per-commit CD — it would wipe unlisted vars).
+#
+#   • Apps (bt-app → bt-app — the ONE front door since D-36; the pre-unification driver/shipper/
+#       fleet and bt-ops-web apps were retired 2026-09-26 and no longer exist in the repo)
+#       Next.js NEXT_PUBLIC_* are inlined into the client bundle at BUILD time, so they must be
+#       passed as `docker build --build-arg` (not runtime env). We build in the runner, push to
+#       Artifact Registry, then `gcloud run deploy --image`. Build args come from GitHub repo
+#       VARIABLES/SECRETS (never hardcoded / committed).
+#
+# Every revision is SHA-tagged via --revision-suffix "<shortSha>-<runNumber>-<runAttempt>" and
+# carries a commit-sha label, so each live revision is traceable back to the exact git commit.
+#
+# ---- GitHub repo config this workflow EXPECTS (Settings → Secrets and variables → Actions) ----
+#   Variables:
+#     NEXT_PUBLIC_API_URL                 e.g. https://bt-gateway-itcdoenefa-el.a.run.app
+#     NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID      vector Map ID for styled maps (bt-app live map)
+#     NEXT_PUBLIC_GOOGLE_CLIENT_ID        Google Sign-In client ID (bt-app login page).
+#                                         A Variable, not a Secret — OAuth client IDs are public
+#                                         by design and ship inside the client bundle. Its origins
+#                                         are restricted at the Google end, same as the Maps key.
+#   Secrets:
+#     NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY HTTP-referrer-restricted Maps JS browser key (bt-app)
+#   (NEXT_PUBLIC_API_URL is public; it is a Variable, not a Secret. The browser key is a Secret so it
+#    is masked in logs — it is still public once inlined, but referrer-restricted at the Google end.)
+#
+# ---- FOUNDER PREREQUISITE — IAM on the deployer SA (bt-cicd-deployer@<project>.iam.gserviceaccount.com) ----
+#   • WIF binding: roles/iam.workloadIdentityUser for the github-pool principalSet on this SA
+#     (lets this repo impersonate the SA via OIDC — no JSON key).
+#   • roles/run.admin                 — create/deploy Cloud Run revisions.
+#   • roles/iam.serviceAccountUser    — act AS the Cloud Run runtime service account.
+#   • roles/cloudbuild.builds.editor  — run the root-context Cloud Build builds (backend services).
+#   • roles/artifactregistry.writer   — push images (apps) + store Cloud Build output; the
+#                                       images are pushed to the `bt` Artifact Registry repo.
+#   See .github/workflows/README.md for the exact gcloud grant commands.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+# Serialize deploy RUNS. `max-parallel` caps builds within ONE run, but two runs overlapping
+# (e.g. two PRs merged a minute apart) multiply that — 3 + 3 concurrent `gcloud builds submit`
+# calls blew Cloud Build's 60/min "Build and Operation Get requests" quota and killed one
+# service in each run. cancel-in-progress:false so the second run QUEUES rather than being
+# dropped: every commit to main must still deploy, just never at the same time as another.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) Detect which deploy targets changed, split into backend services vs apps.
+  # ---------------------------------------------------------------------------
+  detect:
+    name: detect changed deploy targets
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.split.outputs.services }}
+      apps: ${{ steps.split.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # A change to this workflow file redeploys everything (safety — same convention as ci.yml).
+          filters: |
+            bt-gateway: ['bt-gateway/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            # bt-auth-service, bt-booking-service, bt-payment-service and bt-tracking-service
+            # consume packages/shared via a `file:` dependency (verified in their package.json),
+            # so a change there must redeploy them — otherwise a shared fix like the fleet
+            # tenant-isolation guard, the persona resolver behind /auth/me, or the relation-based
+            # settlement authz, lands in the repo but never reaches the running services.
+            # bt-fleet-service does NOT depend on shared.
+            #
+            # THIS LIST IS HAND-MAINTAINED AND GOES STALE SILENTLY: a service added to shared
+            # without being added here still builds green and still merges, it just keeps serving
+            # the old library forever. Adding the `file:` dep and editing this line are one change.
+            bt-auth-service: ['bt-auth-service/**', 'packages/shared/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-booking-service: ['bt-booking-service/**', 'packages/shared/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-pricing-service: ['bt-pricing-service/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-payment-service: ['bt-payment-service/**', 'packages/shared/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-cargo-ledger: ['bt-cargo-ledger/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-tracking-service: ['bt-tracking-service/**', 'packages/shared/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            bt-fleet-service: ['bt-fleet-service/**', 'packages/shared/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+            # bt-app is the ONE front-end (D-36). The pre-unification driver/shipper/fleet and
+            # bt-ops-web apps were retired and deleted from the repo on 2026-09-26.
+            bt-app: ['bt-app/**', '.github/workflows/deploy.yml', 'cloudbuild.yaml', '.gcloudignore']
+      - id: split
+        name: partition changed dirs → backend services (dir==svc) vs apps (dir→svc, maps flag)
+        run: |
+          set -euo pipefail
+          CHANGES='${{ steps.filter.outputs.changes }}'
+          # Backend services: the dir name IS the Cloud Run service name AND the Dockerfile dir.
+          # NOTE `packages/shared` is a build input, not a deployable dir — it must never reach
+          # the services list, or CD would try to build and deploy a library as a service. The
+          # filter above already maps it onto its real consumers; this select drops the bare name.
+          # bt-app is an APP (dir==service name, but it is built in the runner with baked
+          # NEXT_PUBLIC_* build args, not via cloudbuild.yaml), so it is excluded here and
+          # classified under APPS below. Its name starts with bt- like the real services, so
+          # without this it falls through and CD tries to build it a second time as a service.
+          SERVICES=$(printf '%s' "$CHANGES" | jq -c '
+            [ .[] | select(. == "bt-app" or . == "packages/shared" | not) ]')
+          # Apps: bt-app is the only front-end since the pre-unification driver/shipper/fleet and
+          # bt-ops-web apps were retired (2026-09-26). It renders Google Maps (maps=true) and its
+          # login page shows the Google Sign-In button (google=true) — its Dockerfile declares
+          # NEXT_PUBLIC_GOOGLE_CLIENT_ID as a build ARG, so the client id is passed through.
+          # (Before the retirement only driver/shipper got google=true, so bt-app shipped without
+          # the button.)
+          APPS=$(printf '%s' "$CHANGES" | jq -c '
+            [ .[]
+              | select(. == "bt-app")
+              | { dir: ., service: "bt-app", maps: "true", google: "true" } ]')
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "apps=$APPS" >> "$GITHUB_OUTPUT"
+          echo "changed services: $SERVICES"
+          echo "changed apps:     $APPS"
+
+  # ---------------------------------------------------------------------------
+  # 2) Backend services — build+deploy from source (Cloud Build). Env preserved.
+  # ---------------------------------------------------------------------------
+  deploy-services:
+    name: deploy service ${{ matrix.svc }}
+    needs: detect
+    if: needs.detect.outputs.services != '[]' && needs.detect.outputs.services != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      # Cap concurrent source deploys. `gcloud run deploy --source` POLLS its Cloud Build
+      # operation while waiting, and Cloud Build allows only 60 operation-GETs per minute per
+      # PROJECT. A change to this workflow file matches every path filter, so all 8 services
+      # deploy at once, and their combined polling blew that quota — five deploys died with
+      # RATE_LIMIT_EXCEEDED on 'Build and Operation Get requests' despite their builds being
+      # fine. Three at a time keeps the poll rate well under the limit.
+      max-parallel: 3
+      matrix:
+        svc: ${{ fromJSON(needs.detect.outputs.services) }}
+    # Serialize deploys of the SAME service; different services still deploy in parallel.
+    concurrency:
+      group: deploy-${{ matrix.svc }}
+      cancel-in-progress: false
+    env:
+      REGION: asia-south1
+      PROJECT: project-aa0faf06-c115-438a-a36
+    steps:
+      - uses: actions/checkout@v4
+      # Keyless auth to GCP via Workload Identity Federation (NO JSON key).
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: project-aa0faf06-c115-438a-a36
+          workload_identity_provider: projects/752385541585/locations/global/workloadIdentityPools/github-pool/providers/github
+          service_account: bt-cicd-deployer@project-aa0faf06-c115-438a-a36.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build ${{ matrix.svc }} from the REPO ROOT (Cloud Build)
+        run: |
+          set -euo pipefail
+          IMG="${REGION}-docker.pkg.dev/${PROJECT}/bt/${{ matrix.svc }}:${GITHUB_SHA}"
+          echo "IMG=$IMG" >> "$GITHUB_ENV"
+          # Root-context build. This REPLACES `gcloud run deploy --source <dir>`, which uploaded
+          # only the service's own directory — a context in which bt-booking-service and
+          # bt-tracking-service can never build, because their `file:../packages/shared`
+          # dependency points outside it. cloudbuild.yaml builds from `.` instead, and
+          # .gcloudignore keeps that upload to ~4 MiB.
+          gcloud builds submit \
+            --config cloudbuild.yaml \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --substitutions "_SERVICE=${{ matrix.svc }},_IMAGE=${IMG}" \
+            --quiet
+      - name: Deploy ${{ matrix.svc }} (SHA-tagged revision)
+        run: |
+          set -euo pipefail
+          # SHA-tagged, collision-safe revision name (unique per run + re-run attempt).
+          REV="${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          # Deploy by DIGEST-pinned tag, never a mutable one. NO --set-env-vars: an image deploy
+          # PRESERVES existing env / runtime SA / port / scaling. New env vars stay a one-time
+          # manual `gcloud run services update ... --update-env-vars`.
+          # --allow-unauthenticated is a no-op for the existing services but required the first
+          # time one is created, otherwise the new service serves 403 to everyone (which is
+          # exactly how bt-fleet-console shipped).
+          gcloud run deploy "${{ matrix.svc }}" \
+            --image "$IMG" \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --revision-suffix "$REV" \
+            --allow-unauthenticated \
+            --labels "commit-sha=${GITHUB_SHA},managed-by=github-actions" \
+            --quiet
+      # `gcloud run deploy` returning 0 only means the revision was CREATED, not that it serves.
+      # A revision whose container crash-loops still leaves the step green -- which is exactly how
+      # a brand-new service ships: CD creates it with an EMPTY environment (env is deliberately
+      # never set here), it dies on its first config read, and nothing anywhere goes red. Probe the
+      # thing we just shipped instead of trusting the deploy's exit code.
+      - name: Verify ${{ matrix.svc }} actually serves /health
+        run: |
+          set -uo pipefail
+          # Ask Cloud Run for the URL rather than reconstructing it — the run.app hostname embeds a
+          # per-project hash, so a hand-built URL would probe nothing and "pass" on a 404.
+          URL=$(gcloud run services describe "${{ matrix.svc }}" \
+            --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          if [ -z "$URL" ]; then
+            echo "::error::could not resolve the Cloud Run URL for ${{ matrix.svc }} — cannot verify the deploy"
+            exit 1
+          fi
+          echo "probing $URL/health"
+          # A fresh revision takes a few seconds to take traffic, so retry — but bounded, and the
+          # failure path EXITS NON-ZERO. A warning here would recreate the silence this fixes.
+          for i in $(seq 1 10); do
+            # curl already prints 000 on a connection failure; `|| true` just keeps the non-zero
+            # exit from ending the step before the retries are spent.
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$URL/health" 2>/dev/null || true)
+            if [ "$CODE" = "200" ]; then
+              echo "  PASS  $URL/health -> 200 (attempt $i)"
+              exit 0
+            fi
+            echo "  attempt $i/10: $CODE"
+            sleep 6
+          done
+          echo "::error::${{ matrix.svc }} deployed but never served 200 on /health (last: $CODE). The revision is live and broken — check 'gcloud run services logs read ${{ matrix.svc }} --region $REGION' for a crash loop, and whether the service is missing env vars (CD never sets them)."
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # 3) Apps — build image with NEXT_PUBLIC_* baked from repo vars/secrets, push, deploy.
+  # ---------------------------------------------------------------------------
+  deploy-apps:
+    name: deploy app ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.apps != '[]' && needs.detect.outputs.apps != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.apps) }}
+    concurrency:
+      group: deploy-${{ matrix.service }}
+      cancel-in-progress: false
+    env:
+      REGION: asia-south1
+      PROJECT: project-aa0faf06-c115-438a-a36
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: project-aa0faf06-c115-438a-a36
+          workload_identity_provider: projects/752385541585/locations/global/workloadIdentityPools/github-pool/providers/github
+          service_account: bt-cicd-deployer@project-aa0faf06-c115-438a-a36.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Build image (NEXT_PUBLIC_* baked in via --build-arg from repo vars/secrets)
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
+          NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          IMG="${REGION}-docker.pkg.dev/${PROJECT}/bt/${{ matrix.service }}:${GITHUB_SHA}"
+          echo "IMG=$IMG" >> "$GITHUB_ENV"
+          # NEXT_PUBLIC_* are inlined into the client bundle at build → --build-arg, not runtime env.
+          # Omit an empty API_URL so the Dockerfile's sane default is used instead of an empty override.
+          ARGS=()
+          [ -n "${NEXT_PUBLIC_API_URL}" ] && ARGS+=(--build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}")
+          if [ "${{ matrix.maps }}" = "true" ]; then
+            ARGS+=(--build-arg "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY}")
+            ARGS+=(--build-arg "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID}")
+          fi
+          if [ "${{ matrix.google }}" = "true" ]; then
+            # Warn loudly rather than failing: a missing client ID degrades to the login page's
+            # "not configured" panel, and blocking the whole deploy over one disabled sign-in
+            # method would be worse than shipping the other three.
+            if [ -z "${NEXT_PUBLIC_GOOGLE_CLIENT_ID}" ]; then
+              echo "::warning::NEXT_PUBLIC_GOOGLE_CLIENT_ID repo variable is unset — ${{ matrix.service }} ships without Google Sign-In."
+            fi
+            ARGS+=(--build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}")
+          fi
+          docker build "${ARGS[@]}" -t "$IMG" "${{ matrix.dir }}"
+      - name: Push image
+        run: docker push "$IMG"
+      - name: Deploy ${{ matrix.service }} to Cloud Run (SHA-tagged revision)
+        run: |
+          set -euo pipefail
+          REV="${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          # --image deploy preserves existing Cloud Run runtime config (SA, port, scaling). The app's
+          # public config is already baked into the image, so no runtime env is needed.
+          # --allow-unauthenticated is a NO-OP for the apps that already grant allUsers, but it is
+          # required the FIRST time a service is created: a brand-new Cloud Run service defaults to
+          # requiring IAM auth, so bt-fleet-console's first deploy "succeeded" and then served 403
+          # to everyone. Every app here is public by design (they are browser front-ends), so make
+          # that explicit rather than depending on the service having been hand-created earlier.
+          gcloud run deploy "${{ matrix.service }}" \
+            --image "$IMG" \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --revision-suffix "$REV" \
+            --allow-unauthenticated \
+            --labels "commit-sha=${GITHUB_SHA},managed-by=github-actions" \
+            --quiet
+      # Same proof-of-life check as the services lane, against the app's ROOT path: these are Next
+      # apps and have no /health route. Catches the 403-to-everyone shape (how bt-fleet-console first
+      # shipped) and a container that dies on boot, both of which leave the deploy step green.
+      - name: Verify ${{ matrix.service }} actually serves its root page
+        run: |
+          set -uo pipefail
+          URL=$(gcloud run services describe "${{ matrix.service }}" \
+            --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          if [ -z "$URL" ]; then
+            echo "::error::could not resolve the Cloud Run URL for ${{ matrix.service }} — cannot verify the deploy"
+            exit 1
+          fi
+          echo "probing $URL/"
+          # -L: every app's root is a redirect-to-login shell, and both a Next redirect and a Cloud
+          # Run hostname redirect are healthy. Any final code under 400 means the container is up and
+          # routing; deliberately permissive, because a false failure here blocks shipping.
+          for i in $(seq 1 10); do
+            CODE=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 20 "$URL/" 2>/dev/null || true)
+            # Glob-match rather than a numeric compare: curl reports a connection failure as "000",
+            # which any `-lt 400` test would happily accept as healthy.
+            case "$CODE" in
+              2??|3??)
+                echo "  PASS  $URL/ -> $CODE (attempt $i)"
+                exit 0
+                ;;
+            esac
+            echo "  attempt $i/10: $CODE"
+            sleep 6
+          done
+          echo "::error::${{ matrix.service }} deployed but never served its root page (last: $CODE). A 403 means the service is not public; 000/5xx means the container is not booting."
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # 4) Client progress portal — bt-progress (static nginx). Rebuilt on EVERY push to main,
+  #    AFTER the deploy lanes, so the client's page shows what just merged and whether it
+  #    went live. Reads PRs from the GitHub API (client-log blocks from PR descriptions, see
+  #    .github/pull_request_template.md) and this run's deploy result; bt-progress/build.mjs
+  #    is the generator. Same build/push/deploy path as the apps lane, no new IAM. It never
+  #    gates the deploy: `if: always()` so a red service lane still publishes an honest log.
+  # ---------------------------------------------------------------------------
+  progress:
+    name: publish client progress portal
+    needs: [detect, deploy-services, deploy-apps]
+    if: always() && needs.detect.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read   # list merged/open PRs
+      actions: read         # find the last successful deploy run (what is actually live)
+    concurrency:
+      group: deploy-bt-progress
+      cancel-in-progress: false
+    env:
+      REGION: asia-south1
+      PROJECT: project-aa0faf06-c115-438a-a36
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.mjs decides "live" with `git merge-base --is-ancestor`, which needs history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Generate progress.json (PRs + this run's deploy result)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A lane that did not run (nothing changed there) counts as OK; only a failed lane
+          # keeps this push's PRs at "deploying".
+          DEPLOY_OK: ${{ (needs.deploy-services.result == 'success' || needs.deploy-services.result == 'skipped') && (needs.deploy-apps.result == 'success' || needs.deploy-apps.result == 'skipped') }}
+        run: node bt-progress/build.mjs
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: project-aa0faf06-c115-438a-a36
+          workload_identity_provider: projects/752385541585/locations/global/workloadIdentityPools/github-pool/providers/github
+          service_account: bt-cicd-deployer@project-aa0faf06-c115-438a-a36.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Build and push bt-progress
+        run: |
+          set -euo pipefail
+          IMG="${REGION}-docker.pkg.dev/${PROJECT}/bt/bt-progress:${GITHUB_SHA}"
+          echo "IMG=$IMG" >> "$GITHUB_ENV"
+          docker build -t "$IMG" bt-progress
+          docker push "$IMG"
+      - name: Deploy bt-progress to Cloud Run (SHA-tagged revision)
+        run: |
+          set -euo pipefail
+          REV="${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          # Public by design (the client opens it without an account); no env, no secrets inside.
+          gcloud run deploy bt-progress \
+            --image "$IMG" \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --revision-suffix "$REV" \
+            --allow-unauthenticated \
+            --labels "commit-sha=${GITHUB_SHA},managed-by=github-actions" \
+            --quiet
+      - name: Verify bt-progress serves the portal and its data
+        run: |
+          set -uo pipefail
+          URL=$(gcloud run services describe bt-progress \
+            --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          if [ -z "$URL" ]; then
+            echo "::error::could not resolve the Cloud Run URL for bt-progress"
+            exit 1
+          fi
+          echo "portal: $URL"
+          for i in $(seq 1 10); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$URL/progress.json" 2>/dev/null || true)
+            if [ "$CODE" = "200" ]; then
+              echo "  PASS  $URL/progress.json -> 200 (attempt $i)"
+              echo "::notice title=Client progress portal::$URL"
+              exit 0
+            fi
+            echo "  attempt $i/10: $CODE"
+            sleep 6
+          done
+          echo "::error::bt-progress deployed but never served progress.json (last: $CODE)"
+          exit 1

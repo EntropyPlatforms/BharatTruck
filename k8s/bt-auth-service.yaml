@@ -1,0 +1,124 @@
+# =============================================================================
+#  bt-auth-service — Kubernetes Deployment + Service
+#
+#  TEMPLATE — replicate this file for each backend service.
+#  Per-service changes: name, port numbers, image tag, env vars.
+#
+#  Prerequisites:
+#    kubectl apply -f k8s/namespace.yaml
+#
+#    kubectl create secret generic bt-auth-secrets \
+#      --from-env-file=bt-auth-service/.env \
+#      -n bharattruck
+#
+#  Deploy:
+#    kubectl apply -f k8s/bt-auth-service.yaml -n bharattruck
+#
+#  Update image after CI build:
+#    kubectl set image deployment/bt-auth-service \
+#      bt-auth-service=bharattruck/bt-auth-service:<SHA> -n bharattruck
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bt-auth-service
+  namespace: bharattruck
+  labels:
+    app: bt-auth-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bt-auth-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0       # zero-downtime deploys
+  template:
+    metadata:
+      labels:
+        app: bt-auth-service
+        tier: backend
+    spec:
+      containers:
+        - name: bt-auth-service
+          image: bharattruck/bt-auth-service:latest   # replace tag with CI commit SHA
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3001"
+            - name: OTP_DEV_MODE
+              value: "false"
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bt-auth-secrets
+                  key: SUPABASE_URL
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bt-auth-secrets
+                  key: SUPABASE_SERVICE_ROLE_KEY
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bt-auth-secrets
+                  key: REDIS_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bt-auth-secrets
+                  key: JWT_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bt-auth-secrets
+                  key: JWT_REFRESH_SECRET
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bt-auth-service
+  namespace: bharattruck
+  labels:
+    app: bt-auth-service
+spec:
+  selector:
+    app: bt-auth-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3001
+      targetPort: 3001
+  type: ClusterIP   # internal only — expose externally via Ingress or LoadBalancer

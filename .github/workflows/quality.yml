@@ -1,0 +1,275 @@
+name: quality
+
+# The automated test pipeline and its portal (bt-quality).
+#
+# What it does, every run:
+#   1) suites   — for EVERY package (not only changed ones): npm ci, compile, lint, then each
+#                 test file on its own. One JSON result per package (bt-quality/run-suite.mjs).
+#                 bt-cargo-ledger's scenario-flow test also writes the scenario trace: one load
+#                 per entry in bt-quality/scenarios.json, played from posting to payment on
+#                 the real booking + delivery-code code with an in-memory database.
+#   2) e2e      — read-only end-to-end checks against the LIVE site: API access control, pages
+#                 and assets, and a real headless Chrome session (bt-quality/e2e.mjs).
+#                 Also deploys bt-scenario-runner, the backend of the portal's "Try your own
+#                 scenario" form (the same engine behind one public endpoint).
+#   3) publish  — merge the results into report.json + a print-ready report.html, print it to
+#                 report.pdf, build the static portal image and deploy it to Cloud Run as
+#                 `bt-quality` (same build/push/deploy path and identity as bt-progress).
+#   4) verdict  — fail the run if any blocking check failed, AFTER the portal is published,
+#                 so a red run still shows up on the portal with its details.
+#
+# When it runs:
+#   • after every deploy to main finishes (so the live checks test what was just released)
+#   • once a day (catches production drifting without a release)
+#   • on demand: Actions → quality → "Run workflow" (the portal's "Run the tests now" link)
+#
+# This is a REPORT, not a merge gate — ci.yml stays the gate on pull requests.
+#
+# Optional signed-in journey: add repository secrets E2E_EMAIL and E2E_PASSWORD for a
+# dedicated TEST account (e.g. one of the *@bharattruck.test accounts). Without them that
+# group is reported as "skipped", never as passed.
+
+on:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * *'   # 07:00 IST, daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One run at a time; a newer trigger waits rather than cancelling a run that is mid-publish.
+concurrency:
+  group: quality
+  cancel-in-progress: false
+
+env:
+  APP_URL: https://bt-app-itcdoenefa-el.a.run.app
+  API_URL: https://bt-gateway-itcdoenefa-el.a.run.app
+  PROGRESS_URL: https://bt-progress-itcdoenefa-el.a.run.app
+
+jobs:
+  suites:
+    name: test ${{ matrix.pkg }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in step with bt-quality/config.json — a package listed there with no result
+        # here is reported as "Not run" and fails the run.
+        pkg:
+          - packages/shared
+          - bt-auth-service
+          - bt-booking-service
+          - bt-pricing-service
+          - bt-payment-service
+          - bt-cargo-ledger
+          - bt-tracking-service
+          - bt-fleet-service
+          - bt-app
+    # Same service container as ci.yml: required by booking-service's e2e harness, harmless elsewhere.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.pkg }}/package-lock.json
+      - name: Install (clean, from lockfile)
+        working-directory: ${{ matrix.pkg }}
+        run: npm ci
+      # Same reason as ci.yml: Next 16's Turbopack needs the native SWC binary, an optional
+      # platform dependency a non-linux lockfile leaves out.
+      - name: Ensure Next.js SWC linux binary (Next apps only)
+        working-directory: ${{ matrix.pkg }}
+        shell: bash
+        run: |
+          if node -e "process.exit(require('./package.json').dependencies?.next?0:1)"; then
+            NEXT_VER=$(node -p "require('next/package.json').version")
+            npm install --no-save "@next/swc-linux-x64-gnu@${NEXT_VER}" || echo "swc binary unavailable for v$NEXT_VER"
+          fi
+      # Same reason as ci.yml: these two suites boot the real bt-booking-service in-process.
+      - name: Install bt-booking-service deps (cross-service e2e boots it in-process)
+        if: matrix.pkg == 'bt-payment-service' || matrix.pkg == 'bt-cargo-ledger'
+        run: npm ci --prefix bt-booking-service
+      - name: Slug for the result file
+        id: slug
+        run: echo "name=$(echo '${{ matrix.pkg }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+      - name: Run every check and record the results
+        env:
+          REDIS_URL: redis://localhost:6379
+          # bt-cargo-ledger's scenario-flow test writes its step-by-step trace here; it rides
+          # along in that package's artifact and becomes the portal's "Scenarios" section.
+          QUALITY_SCENARIO_OUT: ${{ github.workspace }}/quality-results/quality-scenarios.json
+        run: node bt-quality/run-suite.mjs "${{ matrix.pkg }}" "quality-results/quality-${{ steps.slug.outputs.name }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-${{ steps.slug.outputs.name }}
+          path: quality-results/
+          retention-days: 14
+
+  e2e:
+    name: end-to-end checks on the live site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Node 22 for the global WebSocket that e2e.mjs drives Chrome with.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run the live checks (read-only)
+        env:
+          # Optional: a dedicated TEST account for the signed-in journey. Unset → "skipped".
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: node bt-quality/e2e.mjs quality-results/quality-e2e.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-e2e
+          path: quality-results/
+          retention-days: 14
+
+  publish:
+    name: publish the test portal
+    needs: [suites, e2e]
+    # Publish even when suites failed or errored: the portal must show a red run, not hide it.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      status: ${{ steps.report.outputs.status }}
+    env:
+      REGION: asia-south1
+      PROJECT: project-aa0faf06-c115-438a-a36
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: quality-*
+          path: quality-results
+          merge-multiple: true
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: project-aa0faf06-c115-438a-a36
+          workload_identity_provider: projects/752385541585/locations/global/workloadIdentityPools/github-pool/providers/github
+          service_account: bt-cicd-deployer@project-aa0faf06-c115-438a-a36.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Find the current portal (for the run history)
+        run: |
+          URL=$(gcloud run services describe bt-quality --region "$REGION" --project "$PROJECT" --format='value(status.url)' 2>/dev/null || true)
+          echo "QUALITY_URL=$URL" >> "$GITHUB_ENV"
+          echo "current portal: ${URL:-none yet (first run)}"
+      # The backend of the portal's "Try your own scenario" form: the scenario engine behind
+      # one public endpoint. It has no secret and reaches no live system (in-memory database),
+      # so it is public like the portal; one instance, small, scales to zero. A failure here
+      # must not block the report — the portal hides the form when RUNNER_URL is empty.
+      - name: Build, push and deploy bt-scenario-runner
+        id: runner
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          IMG="${REGION}-docker.pkg.dev/${PROJECT}/bt/bt-scenario-runner:${GITHUB_SHA}"
+          docker build -f bt-cargo-ledger/scenario/Dockerfile -t "$IMG" .
+          docker push "$IMG"
+          gcloud run deploy bt-scenario-runner \
+            --image "$IMG" \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --allow-unauthenticated \
+            --max-instances 1 \
+            --memory 512Mi \
+            --labels "commit-sha=${GITHUB_SHA},managed-by=github-actions" \
+            --quiet
+          URL=$(gcloud run services describe bt-scenario-runner --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          for i in $(seq 1 12); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$URL/health" 2>/dev/null || true)
+            if [ "$CODE" = "200" ]; then echo "RUNNER_URL=$URL" >> "$GITHUB_ENV"; echo "runner: $URL"; exit 0; fi
+            sleep 5
+          done
+          echo "::warning::bt-scenario-runner deployed but /health never answered 200 — the portal will hide the scenario form."
+          exit 1
+      - name: Build report.json, report.html and report.pdf
+        id: report
+        env:
+          QUALITY_TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          node bt-quality/build.mjs quality-results --require-pdf
+          echo "status=$(node -p "require('./bt-quality/site/report.json').status")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            bt-quality/site/report.pdf
+            bt-quality/site/report.json
+          retention-days: 90
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Build and push bt-quality
+        run: |
+          set -euo pipefail
+          IMG="${REGION}-docker.pkg.dev/${PROJECT}/bt/bt-quality:${GITHUB_SHA}-${GITHUB_RUN_NUMBER}"
+          echo "IMG=$IMG" >> "$GITHUB_ENV"
+          docker build -t "$IMG" bt-quality
+          docker push "$IMG"
+      - name: Deploy bt-quality to Cloud Run
+        run: |
+          set -euo pipefail
+          REV="${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          # Public by design (opened without an account); no env, no secrets inside.
+          gcloud run deploy bt-quality \
+            --image "$IMG" \
+            --region "$REGION" \
+            --project "$PROJECT" \
+            --revision-suffix "$REV" \
+            --allow-unauthenticated \
+            --labels "commit-sha=${GITHUB_SHA},managed-by=github-actions" \
+            --quiet
+      - name: Verify the portal serves the page, the data and the PDF
+        run: |
+          set -uo pipefail
+          URL=$(gcloud run services describe bt-quality --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          if [ -z "$URL" ]; then echo "::error::could not resolve the Cloud Run URL for bt-quality"; exit 1; fi
+          for path in / /report.json /report.pdf; do
+            OK=0
+            for i in $(seq 1 10); do
+              CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$URL$path" 2>/dev/null || true)
+              if [ "$CODE" = "200" ]; then echo "  PASS  $URL$path -> 200 (attempt $i)"; OK=1; break; fi
+              sleep 5
+            done
+            if [ "$OK" != "1" ]; then echo "::error::$URL$path never served 200 (last: $CODE)"; exit 1; fi
+          done
+          echo "::notice title=Test portal::$URL"
+
+  verdict:
+    name: verdict
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail the run when any blocking check failed
+        run: |
+          STATUS="${{ needs.publish.outputs.status }}"
+          echo "report status: ${STATUS:-unknown}"
+          if [ "$STATUS" != "pass" ]; then
+            echo "::error::The test report is not green — see the test portal (or the test-report artifact) for the failing checks."
+            exit 1
+          fi

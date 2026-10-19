@@ -1,0 +1,359 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── BharatTruck light theme (2026-10 redesign) ─────────────────────────────
+   Greys carry a slight blue bias; blue is "Signal Blue" for links, selection and
+   routes; brand is Marigold, the primary-button fill (always with dark text). */
+@theme {
+  --color-gray-50:  #f5f7fa;
+  --color-gray-100: #eef1f5;
+  --color-gray-200: #e3e7ee;
+  --color-gray-300: #cbd2dc;
+  --color-gray-400: #8a95a5;
+  --color-gray-500: #5b6676;
+  --color-gray-600: #475263;
+  --color-gray-700: #343d4b;
+  --color-gray-800: #222833;
+  --color-gray-900: #14181f;
+  --color-gray-950: #0b0e13;
+
+  --color-blue-50:  #eef3ff;
+  --color-blue-100: #dce6ff;
+  --color-blue-200: #bfd0ff;
+  --color-blue-300: #93b0ff;
+  --color-blue-400: #6189ff;
+  --color-blue-500: #3d6bff;
+  --color-blue-600: #2457f5;
+  --color-blue-700: #1d47d1;
+  --color-blue-800: #1c3ca6;
+  --color-blue-900: #1c3681;
+
+  --color-brand-50:  #fff8e8;
+  --color-brand-100: #feefc8;
+  --color-brand-200: #fcdd8f;
+  --color-brand-300: #f9c955;
+  --color-brand-400: #f5b730;
+  --color-brand-500: #f2a516;
+  --color-brand-600: #d98c07;
+  --color-brand-700: #b46f06;
+  --color-brand-800: #8f570b;
+  --color-brand-900: #75470d;
+
+  /* Never flips with the theme: dark text on a Marigold fill, tooltip backgrounds. */
+  --color-ink: #14181f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* Manrope for all UI text, IBM Plex Mono for RC numbers, IDs, GSTIN and codes.
+     Both are loaded by next/font in app/layout.tsx. */
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-manrope);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+body {
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: #f97316; }
+  50% { border-color: #fb923c; box-shadow: 0 0 12px rgba(249, 115, 22, 0.3); }
+}
+
+.animate-pulse-border {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes celebrate {
+  0% { transform: scale(0.95); opacity: 0; }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-celebrate {
+  animation: celebrate 0.5s ease-out;
+}
+
+:root {
+  --background: #f5f7fa;
+  --foreground: #14181f;
+  --card: oklch(1 0 0);
+  --card-foreground: #14181f;
+  --popover: oklch(1 0 0);
+  --popover-foreground: #14181f;
+  --primary: #f2a516;
+  --primary-foreground: #14181f;
+  --secondary: #eef1f5;
+  --secondary-foreground: #14181f;
+  --muted: #eef1f5;
+  --muted-foreground: #5b6676;
+  --accent: #eef1f5;
+  --accent-foreground: #14181f;
+  --destructive: #c8322b;
+  --border: #e3e7ee;
+  --input: #e3e7ee;
+  --ring: #2457f5;
+  /* ── Chart series (2026-10-07) ───────────────────────────────────────────────
+     These were shadcn's greyscale defaults, untouched since install and unusable
+     next to Marigold and Signal Blue. They are now a categorical theme drawn from
+     this file's own ramps, in FIXED ORDER — a chart assigns chart-1 first, never
+     cycles, and a 9th series folds into "Other" rather than inventing a hue.
+
+     Validated against the white card surface: lightness band, chroma floor,
+     adjacent-pair CVD separation (worst 13.5 ΔE protan), normal-vision separation
+     and 3:1 contrast all pass. Do not substitute a step by eye — re-run the check.
+
+     Marigold is deliberately NOT here at its brand step: #f2a516 sits at L 0.78 and
+     clears only 2:1 on white, so it reads as a wash, not a mark. chart-2 is the same
+     hue stepped down to brand-700, which is the ramp's honest data colour.
+
+     Health colours (emerald / red for "clears EMI" vs "short") are NOT in this list
+     and never become "series 4" — status stays reserved, per the house rule that
+     colour encodes health, not category. */
+  --chart-1: #2457f5;
+  --chart-2: #b46f06;
+  --chart-3: #0d9488;
+  --chart-4: #8b5cf6;
+  --chart-5: #be185d;
+  --radius: 0.75rem;
+  /* The warm cream behind the hero photographs and at the top of every page. */
+  --warm: #fffaf0;
+  --warm-top: #fdf3df;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* ── Dark theme (2026-10) ────────────────────────────────────────────────────
+   Chosen in Settings → Appearance; `.dark` is set on <html> (lib/theme.ts, and an inline
+   script in app/layout.tsx so there is no flash). The components are NOT forked: they keep
+   their light classes, and this block re-points the colour tokens those classes read —
+   the grey scale runs the other way, `white` becomes the card surface, each hue's pale
+   tints become deep tints and its dark text shades become light ones. Two tokens never
+   flip: `ink` (dark text on a Marigold fill, tooltips) and literal #fff (text on photos
+   and on solid colour). */
+.dark {
+  color-scheme: dark;
+  --color-white: #151b25;
+  --color-gray-50:  #0c1017;
+  --color-gray-100: #1a212d;
+  --color-gray-200: #262f3d;
+  --color-gray-300: #384354;
+  --color-gray-400: #6f7b8c;
+  --color-gray-500: #97a3b4;
+  --color-gray-600: #b4becc;
+  --color-gray-700: #cdd4de;
+  --color-gray-800: #e3e7ee;
+  --color-gray-900: #f3f5f8;
+  --color-gray-950: #ffffff;
+  --color-blue-50: color-mix(in srgb, #3d6bff 13%, #151b25);
+  --color-blue-100: color-mix(in srgb, #3d6bff 22%, #151b25);
+  --color-blue-200: color-mix(in srgb, #3d6bff 34%, #151b25);
+  --color-blue-300: color-mix(in srgb, #3d6bff 50%, #151b25);
+  --color-blue-600: #3d6bff;
+  --color-blue-700: #93b0ff;
+  --color-blue-800: #bfd0ff;
+  --color-blue-900: #dce6ff;
+  --color-brand-50: color-mix(in srgb, #f2a516 13%, #151b25);
+  --color-brand-100: color-mix(in srgb, #f2a516 22%, #151b25);
+  --color-brand-200: color-mix(in srgb, #f2a516 34%, #151b25);
+  --color-brand-300: color-mix(in srgb, #f2a516 50%, #151b25);
+  --color-brand-600: #f5b730;
+  --color-brand-700: #f9c955;
+  --color-brand-800: #fcdd8f;
+  --color-brand-900: #feefc8;
+  --color-emerald-50: color-mix(in srgb, #10b981 13%, #151b25);
+  --color-emerald-100: color-mix(in srgb, #10b981 22%, #151b25);
+  --color-emerald-200: color-mix(in srgb, #10b981 34%, #151b25);
+  --color-emerald-300: color-mix(in srgb, #10b981 50%, #151b25);
+  --color-emerald-600: #10b981;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+  --color-green-50: color-mix(in srgb, #22c55e 13%, #151b25);
+  --color-green-100: color-mix(in srgb, #22c55e 22%, #151b25);
+  --color-green-200: color-mix(in srgb, #22c55e 34%, #151b25);
+  --color-green-300: color-mix(in srgb, #22c55e 50%, #151b25);
+  --color-green-600: #22c55e;
+  --color-green-700: #86efac;
+  --color-green-800: #bbf7d0;
+  --color-green-900: #dcfce7;
+  --color-amber-50: color-mix(in srgb, #f59e0b 13%, #151b25);
+  --color-amber-100: color-mix(in srgb, #f59e0b 22%, #151b25);
+  --color-amber-200: color-mix(in srgb, #f59e0b 34%, #151b25);
+  --color-amber-300: color-mix(in srgb, #f59e0b 50%, #151b25);
+  --color-amber-600: #f59e0b;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-orange-50: color-mix(in srgb, #f97316 13%, #151b25);
+  --color-orange-100: color-mix(in srgb, #f97316 22%, #151b25);
+  --color-orange-200: color-mix(in srgb, #f97316 34%, #151b25);
+  --color-orange-300: color-mix(in srgb, #f97316 50%, #151b25);
+  --color-orange-600: #f97316;
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-orange-900: #ffedd5;
+  --color-red-50: color-mix(in srgb, #ef4444 13%, #151b25);
+  --color-red-100: color-mix(in srgb, #ef4444 22%, #151b25);
+  --color-red-200: color-mix(in srgb, #ef4444 34%, #151b25);
+  --color-red-300: color-mix(in srgb, #ef4444 50%, #151b25);
+  --color-red-600: #ef4444;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-violet-50: color-mix(in srgb, #8b5cf6 13%, #151b25);
+  --color-violet-100: color-mix(in srgb, #8b5cf6 22%, #151b25);
+  --color-violet-200: color-mix(in srgb, #8b5cf6 34%, #151b25);
+  --color-violet-300: color-mix(in srgb, #8b5cf6 50%, #151b25);
+  --color-violet-600: #8b5cf6;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ede9fe;
+  --color-indigo-50: color-mix(in srgb, #6366f1 13%, #151b25);
+  --color-indigo-100: color-mix(in srgb, #6366f1 22%, #151b25);
+  --color-indigo-200: color-mix(in srgb, #6366f1 34%, #151b25);
+  --color-indigo-300: color-mix(in srgb, #6366f1 50%, #151b25);
+  --color-indigo-600: #6366f1;
+  --color-indigo-700: #a5b4fc;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-900: #e0e7ff;
+  --color-teal-50: color-mix(in srgb, #14b8a6 13%, #151b25);
+  --color-teal-100: color-mix(in srgb, #14b8a6 22%, #151b25);
+  --color-teal-200: color-mix(in srgb, #14b8a6 34%, #151b25);
+  --color-teal-300: color-mix(in srgb, #14b8a6 50%, #151b25);
+  --color-teal-600: #14b8a6;
+  --color-teal-700: #5eead4;
+  --color-teal-800: #99f6e4;
+  --color-teal-900: #ccfbf1;
+  --color-pink-50: color-mix(in srgb, #ec4899 13%, #151b25);
+  --color-pink-100: color-mix(in srgb, #ec4899 22%, #151b25);
+  --color-pink-200: color-mix(in srgb, #ec4899 34%, #151b25);
+  --color-pink-300: color-mix(in srgb, #ec4899 50%, #151b25);
+  --color-pink-600: #ec4899;
+  --color-pink-700: #f9a8d4;
+  --color-pink-800: #fbcfe8;
+  --color-pink-900: #fce7f3;
+
+  --warm: #0c1017;
+  --warm-top: #1b1710;
+
+  /* Re-stepped for the dark card surface (#151b25), not flipped: the light steps sit
+     too dark on it and the Tailwind "dark mode" steps sit too light to hold the band.
+     Same hue order, same fixed assignment; validated against #151b25 independently. */
+  --chart-1: #3d6bff;
+  --chart-2: #c47f07;
+  --chart-3: #0d9488;
+  --chart-4: #8b5cf6;
+  --chart-5: #ec4899;
+
+  --background: #0c1017;
+  --foreground: #f3f5f8;
+  --card: #151b25;
+  --card-foreground: #f3f5f8;
+  --popover: #151b25;
+  --popover-foreground: #f3f5f8;
+  --primary: #f2a516;
+  --primary-foreground: #14181f;
+  --secondary: #1a212d;
+  --secondary-foreground: #f3f5f8;
+  --muted: #1a212d;
+  --muted-foreground: #97a3b4;
+  --accent: #1a212d;
+  --accent-foreground: #f3f5f8;
+  --destructive: #f87171;
+  --border: #262f3d;
+  --input: #262f3d;
+  --ring: #6189ff;
+}
+
+/* Washes over the hero photographs and the page top, in the theme's own colour. */
+.hero-wash-x {
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--warm) 92%, transparent) 0%,
+    color-mix(in srgb, var(--warm) 68%, transparent) 28%,
+    transparent 55%);
+}
+.hero-wash-radial {
+  background: radial-gradient(70% 70% at 12% 22%,
+    color-mix(in srgb, var(--warm) 88%, transparent) 0%,
+    color-mix(in srgb, var(--warm) 60%, transparent) 45%,
+    transparent 100%);
+}
+.page-wash { background-image: linear-gradient(180deg, var(--warm-top) 0, transparent 320px); }
+.text-halo { text-shadow: 0 0 6px var(--warm), 0 0 12px var(--warm), 0 0 2px var(--warm); }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Numbers line up in tables and KPI tiles everywhere. */
+  table, .tabular-nums { font-variant-numeric: tabular-nums; }
+  html {
+    @apply font-sans;
+  }
+  /* Motion: one easing for every colour/shadow/opacity transition, and none at all for
+     people who ask for reduced motion. */
+  a, button, [role="button"], input, select, textarea {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+  /* Large monitors: scale the whole rem-based UI up a step so pages read filled, not
+     small in the middle of the screen (2026-10). Everything sized in rem follows. */
+  @media (min-width: 1700px) { html { font-size: 17px; } }
+  @media (min-width: 1880px) { html { font-size: 18px; } }
+  @media (min-width: 2400px) { html { font-size: 20px; } }
+}

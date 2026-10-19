@@ -1,0 +1,56 @@
+[
+  {
+    "id": "doc-explainers",
+    "date": "2026-09-29",
+    "status": "live",
+    "areas": ["Documents"],
+    "title": "Two short explainers: how trip profit is calculated, and how each cost line works",
+    "summary": "A two-page explainer (freight → running cost → gross margin → net profit, with flowcharts and a 1,000 km worked example) and a three-page companion on each cost line: fuel, DEF, tyres, service by age, oils, driver wage, tolls and fixed costs.",
+    "see": "Shared as PDFs: Trip Profit Explained and Cost Lines Explained."
+  },
+  {
+    "id": "doc-pnl-logic",
+    "date": "2026-09-27",
+    "status": "live",
+    "areas": ["Documents"],
+    "title": "P&L calculation logic document and client input form",
+    "summary": "A reference of every dashboard formula, the norms tables it uses and 16 business rules that need your decision, plus a fill-in-the-blanks form for your own trucks, drivers, prices and one real trip to reconcile against.",
+    "see": "Shared as PDFs: Fleet P&L Calculation Logic (10 pages) and Client Input Form (6 pages). Your answers replace the default assumptions."
+  },
+  {
+    "id": "test-accounts",
+    "date": "2026-09-26",
+    "status": "live",
+    "areas": ["Shipper", "Driver"],
+    "title": "Test accounts created for demos",
+    "summary": "Two shipper and two driver test accounts exist on the live app so flows can be demonstrated without real customer data.",
+    "see": "Credentials shared separately."
+  },
+  {
+    "id": "next-real-trip",
+    "date": "2026-10-01",
+    "status": "next",
+    "areas": ["Fleet owner"],
+    "title": "Run the first real trip end-to-end on the live app",
+    "summary": "No paid fleet trip has completed on the live system yet, so the P&L has never run on real data. The next step is one real load, assignment, delivery with proof, and payment, then reconciling the dashboard against your own figures.",
+    "see": "Your Dashboard numbers become real instead of empty."
+  },
+  {
+    "id": "next-client-inputs",
+    "date": "2026-10-01",
+    "status": "next",
+    "areas": ["Fleet owner"],
+    "title": "Your cost inputs replace the default assumptions",
+    "summary": "Once the Client Input Form comes back, your diesel price, EMI, salaries, tyre and service figures replace the built-in norms, and any business rules you changed are implemented.",
+    "see": "Dashboard and Utilisation reflect your actual costs."
+  },
+  {
+    "id": "next-handwritten-ocr",
+    "date": "2026-10-01",
+    "status": "next",
+    "areas": ["Shipper"],
+    "title": "Handwritten invoice reading",
+    "summary": "OCR for handwritten invoices is deferred until the vendor and infrastructure decision is made; printed invoices already work.",
+    "see": "Post a Load scan works for handwritten invoices too."
+  }
+]

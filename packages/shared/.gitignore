@@ -1,0 +1,10 @@
+node_modules/
+
+# dist/ is COMMITTED for this package (T-BE-7), overriding the ROOT .gitignore's
+# global `dist/` rule. Consumers use @bharattruck/shared via a `file:` dep that
+# symlinks a PRE-BUILT dist (npm does NOT install a file: dep's devDependencies
+# on a fresh `npm ci`, so there is no tsc to build at install). Rebuild + commit
+# dist whenever src changes:
+#   npm --prefix packages/shared run build && git add -f packages/shared/dist
+!dist/
+!dist/**

@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BharatTruck — Sign In</title>
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:        #2563eb;
+      --blue-dark:   #1d4ed8;
+      --blue-light:  #eff6ff;
+      --orange:      #f97316;
+      --orange-light:#fff7ed;
+      --gray-50:     #f9fafb;
+      --gray-100:    #f3f4f6;
+      --gray-200:    #e5e7eb;
+      --gray-300:    #d1d5db;
+      --gray-400:    #9ca3af;
+      --gray-500:    #6b7280;
+      --gray-600:    #4b5563;
+      --gray-700:    #374151;
+      --gray-900:    #111827;
+      --red:         #dc2626;
+      --green:       #16a34a;
+      --radius:      12px;
+      --radius-sm:   8px;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      --shadow:      0 4px 16px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+      --shadow-lg:   0 10px 40px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.06);
+      --transition:  200ms cubic-bezier(.4,0,.2,1);
+    }
+
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────────────── */
+    .page {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      min-height: 100vh;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 440px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ─── Brand Header ──────────────────────────────────────────────────── */
+    .brand-bar {
+      background: var(--blue);
+      padding: 20px 28px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-logo {
+      width: 34px;
+      height: 34px;
+      background: #fff;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .brand-logo svg { display: block; }
+
+    .brand-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-tagline {
+      font-size: .72rem;
+      color: rgba(255,255,255,.7);
+      margin-top: 1px;
+    }
+
+    /* ─── Card Body ─────────────────────────────────────────────────────── */
+    .card-body {
+      padding: 28px;
+    }
+
+    /* ─── Steps ─────────────────────────────────────────────────────────── */
+    .step { display: none; }
+    .step.active { display: block; animation: fadeIn var(--transition) both; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Typography ────────────────────────────────────────────────────── */
+    .step-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--gray-900);
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .step-sub {
+      font-size: .875rem;
+      color: var(--gray-500);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* ─── Role Toggle ───────────────────────────────────────────────────── */
+    .role-toggle {
+      display: flex;
+      background: var(--gray-100);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin-bottom: 24px;
+      gap: 3px;
+    }
+
+    .role-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      font-size: .875rem;
+      font-weight: 500;
+      color: var(--gray-500);
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .role-btn.active {
+      background: #fff;
+      color: var(--blue);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ─── Auth Method Grid ───────────────────────────────────────────────── */
+    .method-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 0;
+    }
+
+    .method-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 18px 12px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      cursor: pointer;
+      transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--gray-700);
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    .method-btn:hover {
+      border-color: var(--blue);
+      background: var(--blue-light);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.08);
+    }
+
+    .method-btn .method-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .method-btn.email   .method-icon { background: #eff6ff; }
+    .method-btn.magic   .method-icon { background: #fdf4ff; }
+    .method-btn.phone   .method-icon { background: #f0fdf4; }
+    .method-btn.google  .method-icon { background: #fef9f0; }
+
+    /* ─── Form Elements ─────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+
+    label {
+      display: block;
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--gray-700);
+      margin-bottom: 6px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-prefix {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: .875rem;
+      color: var(--gray-500);
+      pointer-events: none;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="tel"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      font-size: .9375rem;
+      color: var(--gray-900);
+      background: #fff;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+
+    input.error {
+      border-color: var(--red);
+    }
+
+    input.has-prefix { padding-left: 44px; }
+    input.has-suffix { padding-right: 44px; }
+
+    .input-suffix-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--gray-400);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color var(--transition);
+    }
+
+    .input-suffix-btn:hover { color: var(--gray-600); }
+
+    .field-error {
+      font-size: .78rem;
+      color: var(--red);
+      margin-top: 5px;
+    }
+
+    .field-hint {
+      font-size: .78rem;
+      color: var(--gray-400);
+      margin-top: 5px;
+    }
+
+    /* ─── Primary Button ─────────────────────────────────────────────────── */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 11px 20px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: .9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
+      outline: none;
+      letter-spacing: -0.01em;
+    }
+
+    .btn:focus-visible {
+      box-shadow: 0 0 0 3px rgba(37,99,235,.3);
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--blue-dark);
+      box-shadow: 0 4px 14px rgba(37,99,235,.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+    .btn:disabled {
+      opacity: .65;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--gray-600);
+      border: 1.5px solid var(--gray-200);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      background: var(--gray-50);
+      border-color: var(--gray-300);
+    }
+
+    .btn-danger {
+      background: #fff1f2;
+      color: #be123c;
+      border: 1.5px solid #fecdd3;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #ffe4e6;
+    }
+
+    .btn-sm {
+      padding: 8px 14px;
+      font-size: .8125rem;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 17px;
+      height: 17px;
+      border: 2.5px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+      flex-shrink: 0;
+    }
+
+    .spinner-dark {
+      border-color: rgba(37,99,235,.2);
+      border-top-color: var(--blue);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Divider ────────────────────────────────────────────────────────── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+      color: var(--gray-400);
+      font-size: .78rem;
+      font-weight: 500;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--gray-200);
+    }
+
+    /* ─── OTP Input ─────────────────────────────────────────────────────── */
+    .otp-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    .otp-input {
+      width: 50px !important;
+      height: 56px;
+      text-align: center;
+      font-size: 1.375rem !important;
+      font-weight: 700 !important;
+      padding: 0 !important;
+      border-radius: var(--radius-sm) !important;
+      letter-spacing: 0;
+    }
+
+    /* ─── Tab switch ─────────────────────────────────────────────────────── */
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1.5px solid var(--gray-200);
+      margin-bottom: 24px;
+      gap: 4px;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 8px 12px;
+      background: none;
+      border: none;
+      border-bottom: 2.5px solid transparent;
+      margin-bottom: -1.5px;
+      font-size: .875rem;
+      font-weight: 600;
+      color: var(--gray-400);
+      cursor: pointer;
+      transition: color var(--transition), border-color var(--transition);
+    }
+
+    .auth-tab.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+
+    /* ─── Back link ──────────────────────────────────────────────────────── */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .8125rem;
+      font-weight: 500;
+      color: var(--gray-500);
+      background: none;
+      border: none;
+      cursor: pointer;
+      margin-bottom: 20px;
+      padding: 0;
+      transition: color var(--transition);
+    }
+
+    .back-link:hover { color: var(--blue); }
+
+    /* ─── Success / Status Banner ────────────────────────────────────────── */
+    .status-box {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 20px;
+      font-size: .8375rem;
+      line-height: 1.5;
+    }
+
+    .status-box.info   { background: var(--blue-light);   color: #1e40af; }
+    .status-box.success{ background: #f0fdf4;             color: #15803d; }
+    .status-box.warn   { background: var(--orange-light); color: #9a3412; }
+
+    .status-box .status-icon { flex-shrink: 0; margin-top: 1px; }
+
+    /* ─── Token viewer ───────────────────────────────────────────────────── */
+    .token-section { margin-top: 20px; }
+
+    .token-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--gray-50);
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--gray-700);
+      transition: background var(--transition);
+      user-select: none;
+    }
+
+    .token-toggle:hover { background: var(--gray-100); }
+
+    .token-body {
+      border: 1.5px solid var(--gray-200);
+      border-top: none;
+      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+      background: #f8faff;
+      padding: 12px;
+      display: none;
+    }
+
+    .token-body.open { display: block; }
+
+    .token-row {
+      margin-bottom: 10px;
+    }
+
+    .token-row:last-child { margin-bottom: 0; }
+
+    .token-label {
+      font-size: .72rem;
+      font-weight: 700;
+      color: var(--gray-400);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+
+    .token-value {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+      font-size: .7rem;
+      color: var(--gray-700);
+      word-break: break-all;
+      line-height: 1.6;
+      background: #fff;
+      border: 1px solid var(--gray-200);
+      border-radius: 5px;
+      padding: 8px 10px;
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    /* ─── Profile card ───────────────────────────────────────────────────── */
+    .profile-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--gray-50);
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--gray-200);
+    }
+
+    .avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    .profile-info { min-width: 0; }
+
+    .profile-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--gray-900);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .profile-email {
+      font-size: .8125rem;
+      color: var(--gray-500);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .profile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: .72rem;
+      font-weight: 700;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .profile-badge.driver   { background: var(--orange-light); color: var(--orange); }
+    .profile-badge.shipper  { background: var(--blue-light);   color: var(--blue); }
+
+    .meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: .8125rem;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--gray-100);
+      gap: 8px;
+    }
+
+    .meta-row:last-child { border-bottom: none; }
+    .meta-key { color: var(--gray-400); font-weight: 500; }
+    .meta-val { color: var(--gray-700); font-weight: 600; text-align: right; word-break: break-all; }
+
+    .dash-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    /* ─── Toast ──────────────────────────────────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+      z-index: 9999;
+      pointer-events: none;
+      width: min(420px, calc(100vw - 32px));
+    }
+
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg);
+      font-size: .875rem;
+      line-height: 1.5;
+      animation: toastIn .25s cubic-bezier(.34,1.56,.64,1) both;
+      pointer-events: all;
+    }
+
+    .toast.removing {
+      animation: toastOut .2s ease-in both;
+    }
+
+    .toast-success { background: #fff;  border-left: 4px solid var(--green); }
+    .toast-error   { background: #fff;  border-left: 4px solid var(--red); }
+    .toast-info    { background: #fff;  border-left: 4px solid var(--blue); }
+    .toast-warn    { background: #fff;  border-left: 4px solid var(--orange); }
+
+    .toast-icon  { flex-shrink: 0; margin-top: 1px; }
+    .toast-msg   { flex: 1; color: var(--gray-700); font-weight: 500; }
+    .toast-close {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--gray-400);
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+      pointer-events: all;
+    }
+
+    @keyframes toastIn  { from { opacity:0; transform:translateY(12px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+    @keyframes toastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(8px); } }
+
+    /* ─── Misc ───────────────────────────────────────────────────────────── */
+    .mt-8  { margin-top: 8px;  }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .mt-20 { margin-top: 20px; }
+
+    .text-center { text-align: center; }
+    .text-sm { font-size: .8125rem; }
+    .text-muted { color: var(--gray-500); }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: var(--blue);
+      font-size: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: none;
+      transition: color var(--transition);
+    }
+
+    .link-btn:hover { color: var(--blue-dark); text-decoration: underline; }
+
+    .check-email-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--blue-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 1.75rem;
+    }
+
+    /* ─── Google button wrapper ──────────────────────────────────────────── */
+    #google-btn-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: 4px;
+    }
+
+    /* ─── Dev banner ─────────────────────────────────────────────────────── */
+    .dev-banner {
+      background: #fefce8;
+      border: 1.5px dashed #fde047;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: .78rem;
+      color: #713f12;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .dev-banner.show { display: block; }
+
+    .dev-banner strong { display: block; margin-bottom: 4px; font-size: .77rem; }
+
+    .dev-link {
+      font-family: 'SF Mono', monospace;
+      font-size: .7rem;
+      word-break: break-all;
+      color: var(--blue);
+      cursor: pointer;
+    }
+
+    /* ─── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .card-body { padding: 20px 18px; }
+      .brand-bar  { padding: 16px 18px 14px; }
+      .otp-input  { width: 44px !important; height: 50px !important; font-size: 1.25rem !important; }
+      .otp-group  { gap: 7px; }
+    }
+
+    @media (max-width: 360px) {
+      .method-grid { grid-template-columns: 1fr 1fr; }
+      .otp-input   { width: 38px !important; height: 46px !important; font-size: 1.1rem !important; }
+      .otp-group   { gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+  <div class="card">
+
+    <!-- Brand bar -->
+    <div class="brand-bar">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M1 17L5 5H19L23 17H1Z" fill="#2563eb" stroke="#2563eb" stroke-width="0"/>
+          <path d="M1 17L5 5H19L23 17H1Z" fill="#1d4ed8"/>
+          <circle cx="6.5" cy="19.5" r="2" fill="#f97316"/>
+          <circle cx="17.5" cy="19.5" r="2" fill="#f97316"/>
+          <rect x="5" y="10" width="14" height="5" rx="1" fill="#60a5fa"/>
+          <rect x="5" y="10" width="6" height="5" rx="1" fill="#93c5fd"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">BharatTruck</div>
+        <div class="brand-tagline">India's Logistics Network</div>
+      </div>
+    </div>
+
+    <div class="card-body">
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 1 — Choose auth method
+      ══════════════════════════════════════════════════ -->
+      <div id="step-choose" class="step active">
+        <h1 class="step-title">Welcome back</h1>
+        <p class="step-sub">Sign in or create your account to continue.</p>
+
+        <!-- Role selector -->
+        <div class="role-toggle" role="group" aria-label="Account type">
+          <button class="role-btn active" id="role-shipper" onclick="setRole('shipper')" aria-pressed="true">
+            <span>📦</span> Shipper
+          </button>
+          <button class="role-btn" id="role-driver" onclick="setRole('driver')" aria-pressed="false">
+            <span>🚛</span> Driver
+          </button>
+        </div>
+
+        <!-- Auth method grid -->
+        <div class="method-grid" role="list">
+          <button class="method-btn email" onclick="showFlow('email')" role="listitem" aria-label="Email and password sign in">
+            <div class="method-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <path d="M2 7l10 7 10-7"/>
+              </svg>
+            </div>
+            Email &amp; Password
+          </button>
+
+          <button class="method-btn magic" onclick="showFlow('magic')" role="listitem" aria-label="Magic link sign in">
+            <div class="method-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 4V2m0 18v-2M8 11H2m20 0h-6M5.6 5.6l1.4 1.4m9.8 9.8 1.4 1.4M5.6 18.4l1.4-1.4m9.8-9.8 1.4-1.4"/>
+                <circle cx="12" cy="11" r="3"/>
+              </svg>
+            </div>
+            Magic Link
+          </button>
+
+          <button class="method-btn phone" onclick="showFlow('phone')" role="listitem" aria-label="Phone OTP sign in">
+            <div class="method-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                <circle cx="12" cy="18" r="1" fill="#16a34a"/>
+              </svg>
+            </div>
+            Phone OTP
+          </button>
+
+          <button class="method-btn google" onclick="showFlow('google')" role="listitem" aria-label="Google sign in">
+            <div class="method-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+            </div>
+            Google
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2a — Email / Password
+      ══════════════════════════════════════════════════ -->
+      <div id="step-email" class="step">
+        <button class="back-link" onclick="goBack()" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="tab-login"    onclick="switchEmailTab('login')">Sign In</button>
+          <button class="auth-tab"        id="tab-register" onclick="switchEmailTab('register')">Create Account</button>
+        </div>
+
+        <!-- LOGIN -->
+        <div id="email-login-form">
+          <div class="form-group">
+            <label for="login-email">Email address</label>
+            <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+            <div class="field-error" id="login-email-err"></div>
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="input-wrap">
+              <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" class="has-suffix" />
+              <button class="input-suffix-btn" onclick="togglePw('login-password', this)" aria-label="Show/hide password" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="field-error" id="login-password-err"></div>
+          </div>
+          <button class="btn btn-primary mt-8" id="login-btn" onclick="doEmailLogin()">
+            <span class="btn-text">Sign In</span>
+          </button>
+        </div>
+
+        <!-- REGISTER -->
+        <div id="email-register-form" style="display:none">
+          <div class="form-group">
+            <label for="reg-name">Full name</label>
+            <input type="text" id="reg-name" placeholder="Ravi Kumar" autocomplete="name" />
+            <div class="field-error" id="reg-name-err"></div>
+          </div>
+          <div class="form-group">
+            <label for="reg-email">Email address</label>
+            <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email" />
+            <div class="field-error" id="reg-email-err"></div>
+          </div>
+          <div class="form-group">
+            <label for="reg-password">Password</label>
+            <div class="input-wrap">
+              <input type="password" id="reg-password" placeholder="Min 8 characters" autocomplete="new-password" class="has-suffix" />
+              <button class="input-suffix-btn" onclick="togglePw('reg-password', this)" aria-label="Show/hide password" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="field-error" id="reg-password-err"></div>
+          </div>
+          <button class="btn btn-primary mt-8" id="register-btn" onclick="doEmailRegister()">
+            <span class="btn-text">Create Account</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2b — Email OTP Verification
+      ══════════════════════════════════════════════════ -->
+      <div id="step-email-otp" class="step">
+        <button class="back-link" onclick="goToEmailForm()" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <div class="check-email-icon" aria-hidden="true">✉️</div>
+        <h1 class="step-title text-center">Check your inbox</h1>
+        <p class="step-sub text-center" id="email-otp-hint">We sent a 6-digit code to <strong></strong></p>
+
+        <div class="otp-group" role="group" aria-label="One-time password">
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp0" aria-label="OTP digit 1" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp1" aria-label="OTP digit 2" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp2" aria-label="OTP digit 3" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp3" aria-label="OTP digit 4" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp4" aria-label="OTP digit 5" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="eotp5" aria-label="OTP digit 6" />
+        </div>
+
+        <button class="btn btn-primary" id="email-otp-btn" onclick="doEmailVerify()">
+          <span class="btn-text">Verify Code</span>
+        </button>
+
+        <p class="text-center text-sm text-muted mt-16">
+          Didn't receive it?
+          <button class="link-btn" id="resend-otp-btn" onclick="doResendOtp()">Resend OTP</button>
+        </p>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2c — Magic Link
+      ══════════════════════════════════════════════════ -->
+      <div id="step-magic" class="step">
+        <button class="back-link" onclick="goBack()" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <h1 class="step-title">Magic Link</h1>
+        <p class="step-sub">Enter your email and we'll send you a sign-in link — no password needed.</p>
+
+        <div class="form-group">
+          <label for="magic-email">Email address</label>
+          <input type="email" id="magic-email" placeholder="you@example.com" autocomplete="email" />
+          <div class="field-error" id="magic-email-err"></div>
+        </div>
+        <button class="btn btn-primary" id="magic-btn" onclick="doMagicLinkSend()">
+          <span class="btn-text">Send Magic Link</span>
+        </button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2d — Magic Link Sent
+      ══════════════════════════════════════════════════ -->
+      <div id="step-magic-sent" class="step">
+        <div class="check-email-icon" aria-hidden="true">🔗</div>
+        <h1 class="step-title text-center">Link sent!</h1>
+        <p class="step-sub text-center" id="magic-sent-hint">Check your email. The link expires in <strong>15 minutes</strong>.</p>
+
+        <div class="status-box info">
+          <span class="status-icon">ℹ️</span>
+          <span>Click the link in your email to sign in automatically. You can close this tab.</span>
+        </div>
+
+        <!-- Dev mode: show magic link for easy testing -->
+        <div class="dev-banner" id="dev-magic-banner">
+          <strong>🛠 Dev mode — magic link:</strong>
+          <span class="dev-link" id="dev-magic-link" onclick="copyDevLink(this)">Loading...</span>
+          <span class="text-muted text-sm" style="font-size:.72rem; display:block; margin-top:4px;">(click to copy)</span>
+        </div>
+
+        <button class="btn btn-ghost mt-20" onclick="goBack()">Try a different method</button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2e — Phone OTP
+      ══════════════════════════════════════════════════ -->
+      <div id="step-phone" class="step">
+        <button class="back-link" onclick="goBack()" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <h1 class="step-title">Phone Sign In</h1>
+        <p class="step-sub">Enter your 10-digit Indian mobile number.</p>
+
+        <div class="form-group">
+          <label for="phone-input">Mobile number</label>
+          <div class="input-wrap">
+            <span class="input-prefix">+91</span>
+            <input type="tel" id="phone-input" class="has-prefix" placeholder="9876543210" maxlength="10" autocomplete="tel-national" />
+          </div>
+          <div class="field-error" id="phone-err"></div>
+          <div class="field-hint">WhatsApp OTP will be sent to this number.</div>
+        </div>
+        <button class="btn btn-primary" id="phone-btn" onclick="doPhoneSendOtp()">
+          <span class="btn-text">Send OTP</span>
+        </button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2f — Phone OTP Verify
+      ══════════════════════════════════════════════════ -->
+      <div id="step-phone-otp" class="step">
+        <button class="back-link" onclick="showStep('step-phone')" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <div class="check-email-icon" aria-hidden="true">📱</div>
+        <h1 class="step-title text-center">Enter OTP</h1>
+        <p class="step-sub text-center" id="phone-otp-hint">Sent to <strong></strong></p>
+
+        <div class="otp-group" role="group" aria-label="One-time password">
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp0" aria-label="OTP digit 1" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp1" aria-label="OTP digit 2" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp2" aria-label="OTP digit 3" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp3" aria-label="OTP digit 4" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp4" aria-label="OTP digit 5" />
+          <input class="otp-input" type="text" inputmode="numeric" maxlength="1" id="potp5" aria-label="OTP digit 6" />
+        </div>
+
+        <button class="btn btn-primary" id="phone-otp-btn" onclick="doPhoneVerify()">
+          <span class="btn-text">Verify OTP</span>
+        </button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 2g — Google Sign In
+      ══════════════════════════════════════════════════ -->
+      <div id="step-google" class="step">
+        <button class="back-link" onclick="goBack()" aria-label="Go back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Back
+        </button>
+
+        <h1 class="step-title">Google Sign In</h1>
+        <p class="step-sub" id="google-role-hint">Signing in as a <strong>Shipper</strong>.</p>
+
+        <div class="status-box info">
+          <span class="status-icon">ℹ️</span>
+          <span>Your Google account will be linked to BharatTruck. If you're new, an account will be created automatically.</span>
+        </div>
+
+        <!-- GSI button rendered here -->
+        <div id="g_id_onload"
+          data-client_id="752385541585-hg3qa9jgmvufie9osn5qu6eptvh1dc4n.apps.googleusercontent.com"
+          data-callback="handleGoogleCredential"
+          data-auto_prompt="false">
+        </div>
+        <div id="google-btn-wrapper">
+          <div class="g_id_signin"
+            data-type="standard"
+            data-size="large"
+            data-theme="outline"
+            data-text="sign_in_with"
+            data-shape="rectangular"
+            data-width="320">
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
+           STEP 3 — Authenticated Dashboard
+      ══════════════════════════════════════════════════ -->
+      <div id="step-dashboard" class="step">
+        <div class="status-box success" style="margin-bottom:16px">
+          <span class="status-icon">✅</span>
+          <span id="dash-welcome-msg">You're signed in.</span>
+        </div>
+
+        <!-- Profile -->
+        <div class="profile-header">
+          <div class="avatar" id="dash-avatar" aria-hidden="true">U</div>
+          <div class="profile-info">
+            <div class="profile-name" id="dash-name">—</div>
+            <div class="profile-email" id="dash-email">—</div>
+            <div id="dash-role-badge" class="profile-badge shipper">Shipper</div>
+          </div>
+        </div>
+
+        <!-- Meta -->
+        <div id="dash-meta">
+          <div class="meta-row">
+            <span class="meta-key">User ID</span>
+            <span class="meta-val" id="dash-uid">—</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Auth method</span>
+            <span class="meta-val" id="dash-method">—</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Email verified</span>
+            <span class="meta-val" id="dash-verified">—</span>
+          </div>
+        </div>
+
+        <!-- Token viewer -->
+        <div class="token-section">
+          <div class="token-toggle" onclick="toggleTokens()" role="button" aria-expanded="false" aria-controls="token-body" id="token-toggle-btn">
+            <span>🔑 Auth Tokens</span>
+            <svg id="token-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .2s"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <div class="token-body" id="token-body" role="region">
+            <div class="token-row">
+              <div class="token-label">Access Token</div>
+              <div class="token-value" id="tok-access">—</div>
+            </div>
+            <div class="token-row">
+              <div class="token-label">Refresh Token</div>
+              <div class="token-value" id="tok-refresh">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="dash-actions">
+          <button class="btn btn-ghost btn-sm" id="refresh-token-btn" onclick="doRefreshToken()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span class="btn-text">Refresh Token</span>
+          </button>
+          <button class="btn btn-danger btn-sm" id="logout-btn" onclick="doLogout()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span class="btn-text">Sign Out</span>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /card-body -->
+  </div><!-- /card -->
+</div><!-- /page -->
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+// ─── Config ────────────────────────────────────────────────────────────────
+const API_BASE   = 'http://localhost:3001';
+const GOOGLE_CID = '752385541585-hg3qa9jgmvufie9osn5qu6eptvh1dc4n.apps.googleusercontent.com';
+
+// ─── In-memory token store ──────────────────────────────────────────────────
+// Tokens are kept only in JS memory — never written to localStorage/sessionStorage
+const TokenStore = (() => {
+  let _access  = null;
+  let _refresh = null;
+  return {
+    set(access, refresh) { _access = access; _refresh = refresh; },
+    getAccess()          { return _access;  },
+    getRefresh()         { return _refresh; },
+    clear()              { _access = null; _refresh = null; },
+  };
+})();
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let currentRole        = 'shipper';   // 'shipper' | 'driver'
+let pendingEmail       = '';          // email awaiting OTP
+let pendingPhone       = '';          // phone awaiting OTP
+let lastEmailTab       = 'login';     // for back navigation
+let submitGuard        = false;       // debounce guard
+let currentAuthMethod  = '';
+
+// ─── API layer ───────────────────────────────────────────────────────────────
+async function apiFetch(path, options = {}) {
+  const url = `${API_BASE}${path}`;
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (options.auth) {
+    headers['Authorization'] = `Bearer ${TokenStore.getAccess()}`;
+    delete options.auth;
+  }
+  const res = await fetch(url, { ...options, headers });
+  const body = await res.json().catch(() => ({ success: false, message: 'Invalid server response' }));
+  if (!res.ok) {
+    const msg = body?.message || body?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data   = body;
+    throw err;
+  }
+  return body;
+}
+
+// ─── Role selector ────────────────────────────────────────────────────────────
+function setRole(role) {
+  currentRole = role;
+  document.getElementById('role-shipper').classList.toggle('active', role === 'shipper');
+  document.getElementById('role-driver').classList.toggle('active',  role === 'driver');
+  document.getElementById('role-shipper').setAttribute('aria-pressed', role === 'shipper');
+  document.getElementById('role-driver').setAttribute('aria-pressed',  role === 'driver');
+  const hint = document.getElementById('google-role-hint');
+  if (hint) hint.innerHTML = `Signing in as a <strong>${role === 'shipper' ? 'Shipper' : 'Driver'}</strong>.`;
+}
+
+// ─── Step navigation ─────────────────────────────────────────────────────────
+function showStep(id) {
+  document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+}
+
+function showFlow(method) {
+  currentAuthMethod = method;
+  const map = {
+    email:  'step-email',
+    magic:  'step-magic',
+    phone:  'step-phone',
+    google: 'step-google',
+  };
+  showStep(map[method] || 'step-choose');
+}
+
+function goBack() { showStep('step-choose'); }
+
+function goToEmailForm() {
+  showStep('step-email');
+  // restore last tab
+  switchEmailTab(lastEmailTab, true);
+}
+
+// ─── Email tab switcher ───────────────────────────────────────────────────────
+function switchEmailTab(tab, silent = false) {
+  lastEmailTab = tab;
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  document.getElementById('email-login-form').style.display    = tab === 'login'    ? 'block' : 'none';
+  document.getElementById('email-register-form').style.display = tab === 'register' ? 'block' : 'none';
+}
+
+// ─── Password visibility ──────────────────────────────────────────────────────
+function togglePw(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+  // swap icon
+  const icon = btn.querySelector('.eye-icon');
+  if (icon) {
+    icon.innerHTML = isPassword
+      ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+      : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  }
+}
+
+// ─── Button loading state ─────────────────────────────────────────────────────
+function setLoading(btnId, loading, label = null) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  const textEl = btn.querySelector('.btn-text');
+  let spinner  = btn.querySelector('.spinner');
+
+  if (loading) {
+    if (!spinner) {
+      spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      btn.insertBefore(spinner, btn.firstChild);
+    }
+    if (textEl && label) textEl.textContent = label;
+  } else {
+    if (spinner) spinner.remove();
+    if (textEl && label) textEl.textContent = label;
+  }
+}
+
+// ─── Field validation helpers ─────────────────────────────────────────────────
+function clearErr(id) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = '';
+}
+
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = msg;
+}
+
+function markInput(id, hasErr) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('error', hasErr);
+}
+
+function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+function isValidPhone(v) { return /^[6-9]\d{9}$/.test(v); }
+
+// ─── Toast notifications ──────────────────────────────────────────────────────
+const ICONS = {
+  success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  error:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  info:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  warn:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+
+function toast(msg, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `
+    <span class="toast-icon">${ICONS[type] || ICONS.info}</span>
+    <span class="toast-msg">${msg}</span>
+    <button class="toast-close" onclick="dismissToast(this.parentElement)" aria-label="Dismiss">×</button>
+  `;
+  container.appendChild(el);
+
+  const id = setTimeout(() => dismissToast(el), duration);
+  el._timerId = id;
+}
+
+function dismissToast(el) {
+  if (!el || el._removing) return;
+  el._removing = true;
+  clearTimeout(el._timerId);
+  el.classList.add('removing');
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+}
+
+// ─── Debounce guard ───────────────────────────────────────────────────────────
+function guardSubmit(fn) {
+  if (submitGuard) return;
+  submitGuard = true;
+  Promise.resolve(fn()).finally(() => { submitGuard = false; });
+}
+
+// ─── Auth success handler ─────────────────────────────────────────────────────
+function onAuthSuccess(data, method) {
+  const { access_token, refresh_token, user, is_new_user } = data;
+  TokenStore.set(access_token, refresh_token);
+
+  // Populate dashboard
+  const name    = user?.full_name || user?.name || user?.email?.split('@')[0] || 'User';
+  const email   = user?.email   || '—';
+  const role    = user?.role    || currentRole;
+  const uid     = user?.id      || user?.user_id || '—';
+  const verified = user?.email_verified !== undefined ? (user.email_verified ? 'Yes ✓' : 'No') : '—';
+
+  document.getElementById('dash-name').textContent  = name;
+  document.getElementById('dash-email').textContent = email;
+  document.getElementById('dash-uid').textContent   = uid;
+  document.getElementById('dash-method').textContent = method;
+  document.getElementById('dash-verified').textContent = verified;
+  document.getElementById('dash-welcome-msg').textContent =
+    is_new_user ? `Welcome to BharatTruck, ${name.split(' ')[0]}! 🎉` : `Welcome back, ${name.split(' ')[0]}!`;
+
+  // Avatar
+  const avatarEl = document.getElementById('dash-avatar');
+  if (user?.picture || user?.avatar_url) {
+    avatarEl.innerHTML = `<img src="${user.picture || user.avatar_url}" alt="${name}" />`;
+  } else {
+    avatarEl.textContent = name.charAt(0).toUpperCase();
+  }
+
+  // Role badge
+  const badgeEl = document.getElementById('dash-role-badge');
+  badgeEl.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+  badgeEl.className = `profile-badge ${role}`;
+
+  // Tokens
+  document.getElementById('tok-access').textContent  = access_token  || '—';
+  document.getElementById('tok-refresh').textContent = refresh_token || '—';
+
+  showStep('step-dashboard');
+  toast(`Signed in successfully!`, 'success');
+}
+
+// ─── Email / Password — Login ──────────────────────────────────────────────────
+async function doEmailLogin() {
+  guardSubmit(async () => {
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    clearErr('login-email-err'); clearErr('login-password-err');
+    markInput('login-email', false); markInput('login-password', false);
+
+    let valid = true;
+    if (!isValidEmail(email)) {
+      showErr('login-email-err', 'Enter a valid email address.');
+      markInput('login-email', true); valid = false;
+    }
+    if (!password || password.length < 1) {
+      showErr('login-password-err', 'Password is required.');
+      markInput('login-password', true); valid = false;
+    }
+    if (!valid) return;
+
+    setLoading('login-btn', true, 'Signing in…');
+    try {
+      const res = await apiFetch('/auth/email/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      onAuthSuccess(res.data, 'Email / Password');
+    } catch (err) {
+      if (err.status === 403 && err.message?.toLowerCase().includes('not verified')) {
+        // Auto-OTP sent by server, redirect to OTP step
+        pendingEmail = email;
+        toast('Email not verified. OTP sent to your inbox.', 'warn');
+        setupEmailOtpStep(email);
+        showStep('step-email-otp');
+      } else {
+        toast(err.message || 'Login failed. Please try again.', 'error');
+      }
+    } finally {
+      setLoading('login-btn', false, 'Sign In');
+    }
+  });
+}
+
+// ─── Email / Password — Register ──────────────────────────────────────────────
+async function doEmailRegister() {
+  guardSubmit(async () => {
+    const name     = document.getElementById('reg-name').value.trim();
+    const email    = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+
+    clearErr('reg-name-err'); clearErr('reg-email-err'); clearErr('reg-password-err');
+    markInput('reg-name', false); markInput('reg-email', false); markInput('reg-password', false);
+
+    let valid = true;
+    if (!name || name.length < 2) {
+      showErr('reg-name-err', 'Enter your full name.');
+      markInput('reg-name', true); valid = false;
+    }
+    if (!isValidEmail(email)) {
+      showErr('reg-email-err', 'Enter a valid email address.');
+      markInput('reg-email', true); valid = false;
+    }
+    if (!password || password.length < 8) {
+      showErr('reg-password-err', 'Password must be at least 8 characters.');
+      markInput('reg-password', true); valid = false;
+    }
+    if (!valid) return;
+
+    setLoading('register-btn', true, 'Creating account…');
+    try {
+      const res = await apiFetch('/auth/email/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, full_name: name, role: currentRole }),
+      });
+      pendingEmail = email;
+      toast('Account created! Check your email for a verification code.', 'success');
+      setupEmailOtpStep(email);
+      showStep('step-email-otp');
+    } catch (err) {
+      toast(err.message || 'Registration failed. Please try again.', 'error');
+    } finally {
+      setLoading('register-btn', false, 'Create Account');
+    }
+  });
+}
+
+// ─── Email OTP ─────────────────────────────────────────────────────────────────
+function setupEmailOtpStep(email) {
+  pendingEmail = email;
+  const hint = document.getElementById('email-otp-hint');
+  if (hint) hint.innerHTML = `We sent a 6-digit code to <strong>${email}</strong>`;
+  clearOtp('eotp');
+  setTimeout(() => { const first = document.getElementById('eotp0'); if (first) first.focus(); }, 120);
+}
+
+async function doEmailVerify() {
+  guardSubmit(async () => {
+    const otp = getOtp('eotp');
+    if (otp.length !== 6) {
+      toast('Enter all 6 digits of the verification code.', 'warn');
+      return;
+    }
+
+    setLoading('email-otp-btn', true, 'Verifying…');
+    try {
+      const res = await apiFetch('/auth/email/verify', {
+        method: 'POST',
+        body: JSON.stringify({ email: pendingEmail, otp }),
+      });
+      onAuthSuccess(res.data, 'Email / Password');
+    } catch (err) {
+      toast(err.message || 'Verification failed. Check the code and try again.', 'error');
+      clearOtp('eotp');
+      document.getElementById('eotp0').focus();
+    } finally {
+      setLoading('email-otp-btn', false, 'Verify Code');
+    }
+  });
+}
+
+async function doResendOtp() {
+  if (!pendingEmail) return;
+  const btn = document.getElementById('resend-otp-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await apiFetch('/auth/email/resend-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email: pendingEmail }),
+    });
+    toast('OTP resent to your inbox.', 'info');
+  } catch (err) {
+    toast(err.message || 'Could not resend OTP. Please try again.', 'error');
+  } finally {
+    // Cooldown 30s
+    let secs = 30;
+    if (btn) {
+      const orig = btn.textContent;
+      const tick = setInterval(() => {
+        secs--;
+        btn.textContent = `Resend in ${secs}s`;
+        if (secs <= 0) {
+          clearInterval(tick);
+          btn.textContent = orig;
+          btn.disabled = false;
+        }
+      }, 1000);
+    }
+  }
+}
+
+// ─── Magic Link ────────────────────────────────────────────────────────────────
+async function doMagicLinkSend() {
+  guardSubmit(async () => {
+    const email = document.getElementById('magic-email').value.trim();
+    clearErr('magic-email-err'); markInput('magic-email', false);
+
+    if (!isValidEmail(email)) {
+      showErr('magic-email-err', 'Enter a valid email address.');
+      markInput('magic-email', true);
+      return;
+    }
+
+    setLoading('magic-btn', true, 'Sending…');
+    try {
+      const res = await apiFetch('/auth/magic-link/send', {
+        method: 'POST',
+        body: JSON.stringify({ email, role: currentRole }),
+      });
+
+      const hint = document.getElementById('magic-sent-hint');
+      if (hint) hint.innerHTML = `Check your email at <strong>${email}</strong>. The link expires in <strong>15 minutes</strong>.`;
+
+      // Dev mode: expose magic link if server returns one (convenient for testing)
+      const devBanner = document.getElementById('dev-magic-banner');
+      const devLink   = document.getElementById('dev-magic-link');
+      const magicUrl  = res?.data?.magic_url || res?.data?.link || res?.data?.url || null;
+
+      if (magicUrl) {
+        devLink.textContent = magicUrl;
+        devLink.dataset.url = magicUrl;
+        devBanner.classList.add('show');
+      } else {
+        // Hint to check server console
+        devBanner.classList.add('show');
+        devLink.textContent = '(Check server console logs for the link)';
+      }
+
+      showStep('step-magic-sent');
+      toast('Magic link sent!', 'success');
+    } catch (err) {
+      toast(err.message || 'Could not send magic link. Try again.', 'error');
+    } finally {
+      setLoading('magic-btn', false, 'Send Magic Link');
+    }
+  });
+}
+
+function copyDevLink(el) {
+  const url = el.dataset.url || el.textContent;
+  if (!url || url.includes('Check server')) return;
+  navigator.clipboard?.writeText(url).then(() => toast('Link copied to clipboard!', 'success'))
+    .catch(() => {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('Link copied!', 'success');
+    });
+}
+
+// ─── Phone OTP ─────────────────────────────────────────────────────────────────
+async function doPhoneSendOtp() {
+  guardSubmit(async () => {
+    const raw = document.getElementById('phone-input').value.trim().replace(/\D/g, '');
+    clearErr('phone-err'); markInput('phone-input', false);
+
+    if (!isValidPhone(raw)) {
+      showErr('phone-err', 'Enter a valid 10-digit Indian mobile number.');
+      markInput('phone-input', true);
+      return;
+    }
+
+    const phone = `+91${raw}`;
+    pendingPhone = phone;
+
+    setLoading('phone-btn', true, 'Sending OTP…');
+    try {
+      await apiFetch('/auth/send-otp', {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+      });
+
+      const hint = document.getElementById('phone-otp-hint');
+      if (hint) hint.innerHTML = `Sent to <strong>${phone}</strong>`;
+      clearOtp('potp');
+      showStep('step-phone-otp');
+      setTimeout(() => { const f = document.getElementById('potp0'); if (f) f.focus(); }, 120);
+      toast('OTP sent!', 'success');
+    } catch (err) {
+      toast(err.message || 'Could not send OTP. Please try again.', 'error');
+    } finally {
+      setLoading('phone-btn', false, 'Send OTP');
+    }
+  });
+}
+
+async function doPhoneVerify() {
+  guardSubmit(async () => {
+    const otp = getOtp('potp');
+    if (otp.length !== 6) {
+      toast('Enter all 6 digits.', 'warn');
+      return;
+    }
+
+    setLoading('phone-otp-btn', true, 'Verifying…');
+    try {
+      const res = await apiFetch('/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ phone: pendingPhone, otp }),
+      });
+      onAuthSuccess(res.data, 'Phone OTP');
+    } catch (err) {
+      toast(err.message || 'Invalid OTP. Please try again.', 'error');
+      clearOtp('potp');
+      document.getElementById('potp0').focus();
+    } finally {
+      setLoading('phone-otp-btn', false, 'Verify OTP');
+    }
+  });
+}
+
+// ─── Google Sign In ────────────────────────────────────────────────────────────
+async function handleGoogleCredential(response) {
+  const idToken = response.credential;
+  try {
+    const res = await apiFetch('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken, role: currentRole }),
+    });
+    onAuthSuccess(res.data, 'Google');
+  } catch (err) {
+    toast(err.message || 'Google sign-in failed. Please try again.', 'error');
+  }
+}
+
+// ─── Dashboard actions ────────────────────────────────────────────────────────
+async function doRefreshToken() {
+  guardSubmit(async () => {
+    const refreshToken = TokenStore.getRefresh();
+    if (!refreshToken) { toast('No refresh token available.', 'warn'); return; }
+
+    setLoading('refresh-token-btn', true, 'Refreshing…');
+    try {
+      const res = await apiFetch('/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      const { access_token, refresh_token } = res.data || res;
+      TokenStore.set(access_token, refresh_token || refreshToken);
+      document.getElementById('tok-access').textContent  = access_token  || '—';
+      document.getElementById('tok-refresh').textContent = refresh_token || refreshToken || '—';
+      toast('Token refreshed successfully.', 'success');
+    } catch (err) {
+      toast(err.message || 'Token refresh failed.', 'error');
+    } finally {
+      setLoading('refresh-token-btn', false, 'Refresh Token');
+    }
+  });
+}
+
+async function doLogout() {
+  guardSubmit(async () => {
+    setLoading('logout-btn', true, 'Signing out…');
+    try {
+      await apiFetch('/auth/logout', { method: 'POST', auth: true });
+    } catch (_) {
+      // Proceed with client-side logout regardless
+    } finally {
+      TokenStore.clear();
+      setLoading('logout-btn', false, 'Sign Out');
+      showStep('step-choose');
+      // Reset role toggle
+      setRole('shipper');
+      toast('You\'ve been signed out.', 'info');
+    }
+  });
+}
+
+// ─── Token viewer toggle ───────────────────────────────────────────────────────
+function toggleTokens() {
+  const body    = document.getElementById('token-body');
+  const chevron = document.getElementById('token-chevron');
+  const btn     = document.getElementById('token-toggle-btn');
+  const open    = body.classList.toggle('open');
+  chevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+  btn.setAttribute('aria-expanded', open);
+}
+
+// ─── OTP input helpers ────────────────────────────────────────────────────────
+function getOtp(prefix) {
+  return [0,1,2,3,4,5].map(i => {
+    const el = document.getElementById(`${prefix}${i}`);
+    return el ? el.value : '';
+  }).join('').replace(/\D/g, '');
+}
+
+function clearOtp(prefix) {
+  [0,1,2,3,4,5].forEach(i => {
+    const el = document.getElementById(`${prefix}${i}`);
+    if (el) { el.value = ''; el.classList.remove('error'); }
+  });
+}
+
+function initOtpInputs(prefix) {
+  [0,1,2,3,4,5].forEach(i => {
+    const el = document.getElementById(`${prefix}${i}`);
+    if (!el) return;
+
+    el.addEventListener('input', e => {
+      const val = e.target.value.replace(/\D/g, '');
+      e.target.value = val.slice(0,1);
+      if (val && i < 5) {
+        const next = document.getElementById(`${prefix}${i+1}`);
+        if (next) next.focus();
+      }
+      // Auto-submit on last digit
+      if (getOtp(prefix).length === 6) {
+        if (prefix === 'eotp') doEmailVerify();
+        else if (prefix === 'potp') doPhoneVerify();
+      }
+    });
+
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !el.value && i > 0) {
+        const prev = document.getElementById(`${prefix}${i-1}`);
+        if (prev) { prev.value = ''; prev.focus(); }
+      }
+      if (e.key === 'ArrowLeft' && i > 0) document.getElementById(`${prefix}${i-1}`)?.focus();
+      if (e.key === 'ArrowRight' && i < 5) document.getElementById(`${prefix}${i+1}`)?.focus();
+    });
+
+    el.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+      text.split('').forEach((ch, idx) => {
+        const inp = document.getElementById(`${prefix}${idx}`);
+        if (inp) inp.value = ch;
+      });
+      const lastIdx = Math.min(text.length - 1, 5);
+      document.getElementById(`${prefix}${lastIdx}`)?.focus();
+      if (text.length === 6) {
+        if (prefix === 'eotp') doEmailVerify();
+        else if (prefix === 'potp') doPhoneVerify();
+      }
+    });
+  });
+}
+
+// ─── Magic link token in URL ───────────────────────────────────────────────────
+async function checkMagicLinkToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('token');
+  if (!token) return;
+
+  // Show loading state
+  toast('Verifying magic link…', 'info', 6000);
+  try {
+    const res = await apiFetch(`/auth/magic-link/verify?token=${encodeURIComponent(token)}`);
+    onAuthSuccess(res.data, 'Magic Link');
+    // Remove token from URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete('token');
+    window.history.replaceState({}, '', url.toString());
+  } catch (err) {
+    toast(err.message || 'Magic link is invalid or expired.', 'error');
+  }
+}
+
+// ─── Keyboard submit for inputs ───────────────────────────────────────────────
+function bindEnterSubmit(inputId, handler) {
+  const el = document.getElementById(inputId);
+  if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') handler(); });
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+(function init() {
+  // OTP inputs
+  initOtpInputs('eotp');
+  initOtpInputs('potp');
+
+  // Enter key bindings
+  bindEnterSubmit('login-email',    doEmailLogin);
+  bindEnterSubmit('login-password', doEmailLogin);
+  bindEnterSubmit('reg-name',       doEmailRegister);
+  bindEnterSubmit('reg-email',      doEmailRegister);
+  bindEnterSubmit('reg-password',   doEmailRegister);
+  bindEnterSubmit('magic-email',    doMagicLinkSend);
+  bindEnterSubmit('phone-input',    doPhoneSendOtp);
+
+  // Check for magic link token in URL on load
+  checkMagicLinkToken();
+})();
+</script>
+</body>
+</html>

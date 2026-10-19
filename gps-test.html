@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BharatTruck — GPS Test UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #1e293b; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #334155; }
+    header h1 { font-size: 16px; font-weight: 600; }
+    .badge { font-size: 11px; background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 99px; font-weight: 700; }
+    .main { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 320px; background: #1e293b; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid #334155; }
+    .card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; }
+    .card h2 { font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; margin-top: 8px; }
+    label:first-of-type { margin-top: 0; }
+    input, textarea { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: 13px; outline: none; }
+    input:focus, textarea:focus { border-color: #3b82f6; }
+    textarea { resize: vertical; height: 60px; font-family: monospace; font-size: 11px; }
+    .btn { width: 100%; padding: 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.85; }
+    .btn-blue  { background: #3b82f6; color: #fff; }
+    .btn-green { background: #22c55e; color: #000; }
+    .btn-red   { background: #ef4444; color: #fff; }
+    .btn-gray  { background: #334155; color: #e2e8f0; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; }
+    #map { flex: 1; }
+    #log { font-size: 11px; font-family: monospace; line-height: 1.6; max-height: 180px; overflow-y: auto; }
+    .log-ok   { color: #4ade80; }
+    .log-err  { color: #f87171; }
+    .log-info { color: #60a5fa; }
+    .stat { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #1e293b; }
+    .stat:last-child { border-bottom: none; }
+    .stat-val { color: #f8fafc; font-weight: 600; }
+    #sim-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px; }
+    #sim-indicator.running { background: #22c55e; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  </style>
+</head>
+<body>
+<header>
+  <h1>BharatTruck GPS Test UI</h1>
+  <span class="badge">DEV</span>
+  <span style="font-size:12px;color:#64748b;margin-left:auto">bt-booking-service :3002</span>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+
+    <!-- Auth -->
+    <div class="card">
+      <h2>1. Auth (Driver JWT)</h2>
+      <label>Base URL</label>
+      <input id="base-url" value="http://localhost:3002" />
+      <label>JWT Token</label>
+      <textarea id="jwt" placeholder="Paste your driver JWT here..."></textarea>
+      <div style="margin-top:6px;font-size:11px;color:#64748b">
+        Get via: <code style="color:#f8fafc">make test-auth</code> → verify-otp → copy access_token
+      </div>
+    </div>
+
+    <!-- Push location -->
+    <div class="card">
+      <h2>2. Push Location</h2>
+      <label>Booking ID (optional UUID)</label>
+      <input id="booking-id" placeholder="leave empty to push without booking" />
+      <label>Lat / Lng</label>
+      <div class="row">
+        <input id="lat" type="number" step="0.0001" value="28.6139" />
+        <input id="lng" type="number" step="0.0001" value="77.2090" />
+      </div>
+      <label>Heading (°) / Speed (km/h)</label>
+      <div class="row">
+        <input id="heading" type="number" value="90" />
+        <input id="speed" type="number" value="40" />
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-blue" style="flex:1" onclick="pushOnce()">Push Once</button>
+        <button class="btn btn-gray" style="flex:1" id="sim-btn" onclick="toggleSim()">
+          <span id="sim-indicator"></span>Simulate
+        </button>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:#64748b">
+        Simulate moves the marker ~50m north every 3 s (mimics driver ping)
+      </div>
+    </div>
+
+    <!-- Read location -->
+    <div class="card">
+      <h2>3. Poll Driver Location</h2>
+      <label>Driver ID (UUID)</label>
+      <input id="driver-id" placeholder="driver profile UUID" />
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-green" style="flex:1" onclick="pollOnce()">Fetch Once</button>
+        <button class="btn btn-gray"  style="flex:1" id="poll-btn" onclick="togglePoll()">Auto Poll</button>
+      </div>
+      <div style="margin-top:10px" id="stats">
+        <div class="stat"><span>Lat</span><span class="stat-val" id="s-lat">—</span></div>
+        <div class="stat"><span>Lng</span><span class="stat-val" id="s-lng">—</span></div>
+        <div class="stat"><span>Heading</span><span class="stat-val" id="s-heading">—</span></div>
+        <div class="stat"><span>Speed (km/h)</span><span class="stat-val" id="s-speed">—</span></div>
+        <div class="stat"><span>Updated</span><span class="stat-val" id="s-ts">—</span></div>
+      </div>
+    </div>
+
+    <!-- Read by booking -->
+    <div class="card">
+      <h2>4. Poll by Booking</h2>
+      <label>Booking ID (UUID)</label>
+      <input id="poll-booking-id" placeholder="booking UUID" />
+      <button class="btn btn-green" style="margin-top:8px" onclick="pollByBooking()">Fetch for Booking</button>
+    </div>
+
+    <!-- Log -->
+    <div class="card" style="flex:1">
+      <h2>Log <button onclick="clearLog()" style="float:right;font-size:10px;background:none;border:1px solid #334155;color:#94a3b8;border-radius:4px;padding:1px 6px;cursor:pointer">Clear</button></h2>
+      <div id="log"></div>
+    </div>
+
+  </div>
+
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Map setup ──────────────────────────────────────────────────────────────
+const map = L.map('map').setView([28.6139, 77.2090], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+const driverIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:32px;height:32px;background:#f59e0b;border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.4)">🚛</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+});
+
+let driverMarker = null;
+let readerMarker = null;
+
+function setDriverMarker(lat, lng) {
+  if (!driverMarker) {
+    driverMarker = L.marker([lat, lng], { icon: driverIcon }).addTo(map);
+    driverMarker.bindPopup('Driver (pushed)');
+  } else {
+    driverMarker.setLatLng([lat, lng]);
+  }
+  map.setView([lat, lng], map.getZoom());
+}
+
+function setReaderMarker(lat, lng, ts) {
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;background:#3b82f6;border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.4)">📍</div>`,
+    iconSize: [28, 28], iconAnchor: [14, 14],
+  });
+  if (!readerMarker) {
+    readerMarker = L.marker([lat, lng], { icon }).addTo(map);
+  } else {
+    readerMarker.setLatLng([lat, lng]);
+  }
+  readerMarker.bindPopup(`<b>Redis cache</b><br>${ts}`).openPopup();
+}
+
+// Click map to set lat/lng inputs
+map.on('click', e => {
+  document.getElementById('lat').value = e.latlng.lat.toFixed(6);
+  document.getElementById('lng').value = e.latlng.lng.toFixed(6);
+  log('info', `Clicked map: ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function logEl() { return document.getElementById('log'); }
+function log(type, msg) {
+  const d = document.createElement('div');
+  d.className = `log-${type}`;
+  const t = new Date().toTimeString().slice(0,8);
+  d.textContent = `[${t}] ${msg}`;
+  logEl().prepend(d);
+}
+function clearLog() { logEl().innerHTML = ''; }
+
+function getBase()    { return document.getElementById('base-url').value.replace(/\/$/, ''); }
+function getJwt()     { return document.getElementById('jwt').value.trim(); }
+function getLat()     { return parseFloat(document.getElementById('lat').value); }
+function getLng()     { return parseFloat(document.getElementById('lng').value); }
+
+// ── Push location ──────────────────────────────────────────────────────────
+async function pushOnce() {
+  const jwt = getJwt();
+  if (!jwt) { log('err', 'Paste your driver JWT first'); return; }
+  const lat = getLat(), lng = getLng();
+  const body = {
+    lat, lng,
+    heading:    parseFloat(document.getElementById('heading').value) || undefined,
+    speed_kmh:  parseFloat(document.getElementById('speed').value)   || undefined,
+    accuracy_m: 10,
+  };
+  const bid = document.getElementById('booking-id').value.trim();
+  if (bid) body.booking_id = bid;
+
+  try {
+    const res = await fetch(`${getBase()}/location/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (json.success) {
+      log('ok', `Pushed → ${lat.toFixed(5)}, ${lng.toFixed(5)} | ttl=${json.data.ttl_seconds}s`);
+      setDriverMarker(lat, lng);
+    } else {
+      log('err', `Push failed: ${json.error} (${json.code})`);
+    }
+  } catch(e) {
+    log('err', `Network error: ${e.message}`);
+  }
+}
+
+// ── Simulate ───────────────────────────────────────────────────────────────
+let simInterval = null;
+function toggleSim() {
+  if (simInterval) {
+    clearInterval(simInterval);
+    simInterval = null;
+    document.getElementById('sim-indicator').className = '';
+    document.getElementById('sim-btn').innerHTML = '<span id="sim-indicator"></span>Simulate';
+    log('info', 'Simulation stopped');
+  } else {
+    log('info', 'Simulation started — pinging every 3s');
+    document.getElementById('sim-indicator').className = 'running';
+    document.getElementById('sim-btn').innerHTML = '<span id="sim-indicator" class="running"></span>Stop';
+    simInterval = setInterval(() => {
+      // Nudge ~50m north
+      const lat = parseFloat(document.getElementById('lat').value) + 0.00045;
+      document.getElementById('lat').value = lat.toFixed(6);
+      pushOnce();
+    }, 3000);
+  }
+}
+
+// ── Poll driver location ───────────────────────────────────────────────────
+let pollInterval = null;
+async function pollOnce() {
+  const driverId = document.getElementById('driver-id').value.trim();
+  if (!driverId) { log('err', 'Enter a Driver ID to poll'); return; }
+  const jwt = getJwt();
+  if (!jwt) { log('err', 'JWT required for read too'); return; }
+  try {
+    const res = await fetch(`${getBase()}/location/driver/${driverId}`, {
+      headers: { 'Authorization': `Bearer ${jwt}` },
+    });
+    const json = await res.json();
+    if (json.success && json.data) {
+      const d = json.data;
+      document.getElementById('s-lat').textContent     = d.lat?.toFixed(6) ?? '—';
+      document.getElementById('s-lng').textContent     = d.lng?.toFixed(6) ?? '—';
+      document.getElementById('s-heading').textContent = d.heading ?? '—';
+      document.getElementById('s-speed').textContent   = d.speed_kmh ?? '—';
+      document.getElementById('s-ts').textContent      = d.updated_at ? new Date(d.updated_at).toLocaleTimeString() : '—';
+      log('ok', `Redis: ${d.lat?.toFixed(5)}, ${d.lng?.toFixed(5)} @ ${d.speed_kmh ?? '?'} km/h`);
+      setReaderMarker(d.lat, d.lng, d.updated_at);
+    } else {
+      log('info', json.message ?? 'No location data');
+    }
+  } catch(e) {
+    log('err', `Network error: ${e.message}`);
+  }
+}
+
+function togglePoll() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+    document.getElementById('poll-btn').textContent = 'Auto Poll';
+    log('info', 'Polling stopped');
+  } else {
+    log('info', 'Polling every 4s...');
+    document.getElementById('poll-btn').textContent = 'Stop Poll';
+    pollOnce();
+    pollInterval = setInterval(pollOnce, 4000);
+  }
+}
+
+// ── Poll by booking ────────────────────────────────────────────────────────
+async function pollByBooking() {
+  const bid = document.getElementById('poll-booking-id').value.trim();
+  if (!bid) { log('err', 'Enter a Booking ID'); return; }
+  const jwt = getJwt();
+  if (!jwt) { log('err', 'JWT required'); return; }
+  try {
+    const res = await fetch(`${getBase()}/location/booking/${bid}`, {
+      headers: { 'Authorization': `Bearer ${jwt}` },
+    });
+    const json = await res.json();
+    if (json.success && json.data) {
+      const d = json.data;
+      log('ok', `Booking ${bid.slice(0,8)}…: driver ${d.driver_id?.slice(0,8)}… at ${d.lat?.toFixed(5)}, ${d.lng?.toFixed(5)}`);
+      setReaderMarker(d.lat, d.lng, d.updated_at);
+    } else {
+      log('info', json.message ?? 'No location data for booking');
+    }
+  } catch(e) {
+    log('err', `Network error: ${e.message}`);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "repository": "EntropyPlatforms/BharatTruck",
+  "app_url": "https://bt-app-itcdoenefa-el.a.run.app",
+  "api_url": "https://bt-gateway-itcdoenefa-el.a.run.app",
+  "packages": [
+    { "dir": "packages/shared", "name": "Shared library", "about": "Access rules and helpers used by several services" },
+    { "dir": "bt-auth-service", "name": "Accounts and sign-in", "about": "Registration, sign-in, roles, onboarding" },
+    { "dir": "bt-booking-service", "name": "Loads and bookings", "about": "Posting loads, bids, trips, delivery" },
+    { "dir": "bt-pricing-service", "name": "Pricing", "about": "Price quotes for a load" },
+    { "dir": "bt-payment-service", "name": "Payments", "about": "Settlement of completed trips" },
+    { "dir": "bt-cargo-ledger", "name": "Cargo ledger", "about": "Delivery codes and proof of delivery" },
+    { "dir": "bt-tracking-service", "name": "Tracking", "about": "Live location, routes, fuel on the road" },
+    { "dir": "bt-fleet-service", "name": "Fleet", "about": "Trucks, drivers, assignments, fleet P&L" },
+    { "dir": "bt-app", "name": "Web app", "about": "The BharatTruck site: production build and lint" }
+  ]
+}

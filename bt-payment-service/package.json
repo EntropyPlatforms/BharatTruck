@@ -1,0 +1,29 @@
+{
+  "name": "bt-payment-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "for f in test/*.mts; do echo \"── $f\"; tsx \"$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "@bharattruck/shared": "file:../packages/shared",
+    "@fastify/cors": "^9.0.1",
+    "@supabase/supabase-js": "2.100.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.27.0",
+    "fastify-plugin": "^5.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "pino-pretty": "^11.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.15.1",
+    "typescript": "^5.4.5"
+  }
+}

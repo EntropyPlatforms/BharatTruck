@@ -1,0 +1,48 @@
+# =============================================================================
+#  Generic root-context build for any BharatTruck backend service.
+# =============================================================================
+# WHY THIS EXISTS
+#   CD used to run `gcloud run deploy <svc> --source <svc-dir>`, which uploads ONLY that
+#   service's directory as the Docker context. bt-booking-service and bt-tracking-service
+#   depend on the shared library as `"@bharattruck/shared": "file:../packages/shared"`, and
+#   `../packages/shared` does not exist inside a single-service context — so `npm ci` failed
+#   with "Missing: @bharattruck/shared@ from lock file" and neither service could ever deploy.
+#
+#   Building from the REPO ROOT fixes that at the root: the context contains both the service
+#   and packages/shared, and each Dockerfile recreates the repo's directory layout inside the
+#   image so the `file:../packages/shared` path resolves exactly as it does on a developer's
+#   machine.
+#
+# USAGE
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions _SERVICE=bt-booking-service,_IMAGE=<region>-docker.pkg.dev/<proj>/bt/bt-booking-service:<tag>
+#
+#   Run from the repo root. `.gcloudignore` keeps the upload small (no node_modules/.next).
+# =============================================================================
+
+substitutions:
+  # Service directory name — also the Dockerfile location and the Cloud Run service name.
+  _SERVICE: ''
+  # Fully-qualified image ref to build and push.
+  _IMAGE: ''
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=${_SERVICE}/Dockerfile
+      - --tag=${_IMAGE}
+      # `.` is the REPO ROOT — this is the whole point of this config.
+      - .
+
+images:
+  - ${_IMAGE}
+
+options:
+  # NO machineType override: E2_HIGHCPU_8 is quota-restricted in asia-south1 and fails the
+  # build outright with FAILED_PRECONDITION. The default pool is fine — .gcloudignore keeps
+  # the root-context upload to ~3.7 MiB, so this is barely larger than the old per-dir build.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

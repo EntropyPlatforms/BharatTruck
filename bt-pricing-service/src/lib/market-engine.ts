@@ -1,0 +1,120 @@
+// Market-rate layer of the pricing engine (P2).
+//
+// Produces a MARKET reference price for a lane, calibrated from FR8.in live booked rates (seeded by
+// migration 0029). The signal that matters most is DIRECTIONAL: a head-haul and its back-haul are
+// priced very differently (Mumbai→Delhi ₹85.5k vs Delhi→Mumbai ₹50k) because of load imbalance —
+// the FR8 per-corridor rate already encodes that asymmetry, so when both endpoints resolve to a
+// seeded corridor we use the live lane rate; otherwise we fall back to a national ₹/km-by-class
+// baseline. Coordinates are matched to the nearest seeded city within a radius (the "cross-reference
+// the lat/longs" step). A light season/urgency multiplier is applied; the fuller demand-premium
+// model (the dataset's modeled Market_Price, which varies 0.92×–1.45× the raw FR8 rate) is the P5
+// calibration pass and is deliberately NOT reproduced here.
+import { getSupabase } from './supabase.js'
+
+export type MarketVehicleClass = 'SCV' | 'LCV' | 'MCV' | 'HCV'
+
+type City = { city: string; lat: number; lng: number }
+type Lane = { inr_per_km: number | null; mxl_inr: number | null; ds_ratio: number | null }
+
+const CITY_MATCH_RADIUS_KM = 120 // a quote's coords must be within this of a seeded city to use lanes
+
+let cities: City[] | null = null
+let lanes: Map<string, Lane> | null = null
+let nationalPerKm: Map<string, number> | null = null
+
+const laneKey = (o: string, d: string) => `${o} ${d}`
+
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371, toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng)
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)))
+}
+
+async function ensureLoaded(): Promise<void> {
+  if (cities && lanes && nationalPerKm) return
+  const sb = getSupabase()
+  const [cRes, lRes, nRes] = await Promise.all([
+    sb.from('freight_cities').select('city, lat, lng'),
+    sb.from('freight_lane_rates').select('origin_city, dest_city, inr_per_km, mxl_inr, ds_ratio'),
+    sb.from('freight_market_rate_by_class').select('vehicle_class, inr_per_km'),
+  ])
+  if (cRes.error) throw new Error(`freight_cities load failed: ${cRes.error.message}`)
+  if (lRes.error) throw new Error(`freight_lane_rates load failed: ${lRes.error.message}`)
+  if (nRes.error) throw new Error(`freight_market_rate_by_class load failed: ${nRes.error.message}`)
+  cities = (cRes.data ?? []).map((r: any) => ({ city: r.city, lat: Number(r.lat), lng: Number(r.lng) }))
+  lanes = new Map((lRes.data ?? []).map((r: any) => [laneKey(r.origin_city, r.dest_city), {
+    inr_per_km: r.inr_per_km == null ? null : Number(r.inr_per_km),
+    mxl_inr: r.mxl_inr == null ? null : Number(r.mxl_inr),
+    ds_ratio: r.ds_ratio == null ? null : Number(r.ds_ratio),
+  }]))
+  nationalPerKm = new Map((nRes.data ?? []).map((r: any) => [r.vehicle_class, Number(r.inr_per_km)]))
+}
+
+/** Nearest seeded city within CITY_MATCH_RADIUS_KM, or null. */
+export function nearestCity(lat: number, lng: number, list: City[]): string | null {
+  let best: string | null = null, bestKm = CITY_MATCH_RADIUS_KM
+  for (const c of list) {
+    const km = haversineKm(lat, lng, c.lat, c.lng)
+    if (km <= bestKm) { bestKm = km; best = c.city }
+  }
+  return best
+}
+
+export type MarketInput = {
+  source_lat: number; source_lng: number; dest_lat: number; dest_lng: number
+  distance_km: number; vehicle_class: MarketVehicleClass
+  urgent?: boolean; monsoon?: boolean
+}
+
+export type MarketResult = {
+  market_price: number
+  inr_per_km: number
+  market_basis: 'lane_fr8' | 'national'
+  source_city: string | null
+  dest_city: string | null
+  ds_ratio: number | null
+}
+
+/** Season/urgency multiplier. Deliberately light for P2; P5 calibrates against the 4,917-row set. */
+export function contextMultiplier(input: { urgent?: boolean; monsoon?: boolean }): number {
+  return (input.urgent ? 1.1 : 1) * (input.monsoon ? 1.05 : 1)
+}
+
+/** Pure market resolution against pre-loaded reference data (exported for tests). */
+export function resolveMarketFrom(
+  input: MarketInput,
+  ref: { cities: City[]; lanes: Map<string, Lane>; nationalPerKm: Map<string, number> },
+): MarketResult {
+  const src = nearestCity(input.source_lat, input.source_lng, ref.cities)
+  const dst = nearestCity(input.dest_lat, input.dest_lng, ref.cities)
+  const lane = src && dst ? ref.lanes.get(laneKey(src, dst)) ?? null : null
+
+  // The FR8 lane rate is a full-truckload (MXL/HCV) number; it carries the directional asymmetry.
+  // Use it for HCV; other classes have no per-lane FR8 rate seeded, so they take the national ₹/km
+  // (still directionally informed later, in P5, via ds_ratio). Unknown corridor → national.
+  let perKm: number
+  let basis: 'lane_fr8' | 'national'
+  if (lane && input.vehicle_class === 'HCV' && lane.inr_per_km != null) {
+    perKm = lane.inr_per_km; basis = 'lane_fr8'
+  } else {
+    perKm = ref.nationalPerKm.get(input.vehicle_class) ?? ref.nationalPerKm.get('HCV') ?? 60
+    basis = 'national'
+  }
+  const market_price = Math.round(perKm * input.distance_km * contextMultiplier(input))
+  return { market_price, inr_per_km: perKm, market_basis: basis, source_city: src, dest_city: dst, ds_ratio: lane?.ds_ratio ?? null }
+}
+
+/** Resolve the market price for a quote, loading + caching the seeded reference data. */
+export async function resolveMarketPrice(input: MarketInput): Promise<MarketResult> {
+  await ensureLoaded()
+  return resolveMarketFrom(input, { cities: cities!, lanes: lanes!, nationalPerKm: nationalPerKm! })
+}
+
+// ── Test seams ──────────────────────────────────────────────────────────────
+export function __loadMarketFixtures(f: { cities: City[]; lanes: Array<{ origin_city: string; dest_city: string; inr_per_km: number | null; mxl_inr?: number | null; ds_ratio?: number | null }>; nationalPerKm: Record<string, number> }): void {
+  cities = f.cities
+  lanes = new Map(f.lanes.map((l) => [laneKey(l.origin_city, l.dest_city), { inr_per_km: l.inr_per_km, mxl_inr: l.mxl_inr ?? null, ds_ratio: l.ds_ratio ?? null }]))
+  nationalPerKm = new Map(Object.entries(f.nationalPerKm))
+}
+export function __resetMarketCaches(): void { cities = null; lanes = null; nationalPerKm = null }

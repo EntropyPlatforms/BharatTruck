@@ -1,0 +1,38 @@
+# Upload filter for `gcloud builds submit` (root-context builds).
+#
+# CD builds every service with the REPO ROOT as the Docker context, because the services
+# that consume @bharattruck/shared via a `file:../packages/shared` dependency (auth,
+# booking, tracking) cannot resolve it from a single-service context. That means the whole repo is uploaded
+# to Cloud Build on every deploy, so this file is what keeps that upload small.
+#
+# NOTE: unlike .dockerignore, the presence of this file makes gcloud STOP honouring
+# .gitignore. Everything that should not ship must therefore be listed here explicitly.
+
+.git
+.gitignore
+
+# Dependencies — always reinstalled inside the image from the lockfile. Uploading these
+# would add hundreds of MB and, worse, could leak a host-built (darwin) binary into a
+# linux image.
+**/node_modules
+
+# Build output. Services recompile in the builder stage.
+# EXCEPTION: packages/shared/dist is COMMITTED and is the actual artifact consumers
+# install (its package.json has `files: ["dist"]`), so it must NOT be excluded.
+**/.next
+bt-*/dist
+
+# Local env + tooling noise
+**/.env
+**/.env.*
+!**/.env.example
+.claude
+.review-worktrees
+**/.DS_Store
+**/*.log
+**/.turbo
+**/coverage
+
+# Docs and scripts are not build inputs
+docs
+scripts

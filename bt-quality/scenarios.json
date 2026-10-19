@@ -1,0 +1,110 @@
+[
+  {
+    "id": "nagpur-pune-auction",
+    "name": "Nagpur to Pune, 16 tonnes, three carriers bid",
+    "from": {
+      "label": "Nagpur, Maharashtra",
+      "lat": 21.1458,
+      "lng": 79.0882,
+      "state_code": "27"
+    },
+    "to": {
+      "label": "Pune, Maharashtra",
+      "lat": 18.5204,
+      "lng": 73.8567,
+      "state_code": "27"
+    },
+    "weight_kg": 16000,
+    "vehicle_type": "hcv",
+    "load_type": "general",
+    "quoted_price": 48500,
+    "consignment_value_inr": 40000,
+    "receiver": {
+      "name": "Anita Traders",
+      "phone": "9876543210",
+      "email": "stores@anita-traders.example"
+    },
+    "bids": [
+      {
+        "carrier": "Sharma Transport",
+        "amount": 46200
+      },
+      {
+        "carrier": "Vidarbha Roadlines",
+        "amount": 47500
+      },
+      {
+        "carrier": "Deccan Carriers",
+        "amount": 48500
+      }
+    ]
+  },
+  {
+    "id": "surat-mumbai-single-bid",
+    "name": "Surat to Mumbai, 8 tonnes, one carrier bids (inter-state)",
+    "from": {
+      "label": "Surat, Gujarat",
+      "lat": 21.1702,
+      "lng": 72.8311,
+      "state_code": "24"
+    },
+    "to": {
+      "label": "Mumbai, Maharashtra",
+      "lat": 19.076,
+      "lng": 72.8777,
+      "state_code": "27"
+    },
+    "weight_kg": 8000,
+    "vehicle_type": "lcv",
+    "load_type": "general",
+    "quoted_price": 22000,
+    "consignment_value_inr": 30000,
+    "receiver": {
+      "name": "Mehta Retail",
+      "phone": "9822001122",
+      "email": "inward@mehta-retail.example"
+    },
+    "bids": [
+      {
+        "carrier": "Western Freight",
+        "amount": 21500
+      }
+    ]
+  },
+  {
+    "id": "indore-bhopal-light",
+    "name": "Indore to Bhopal, 2.5 tonnes, two carriers bid",
+    "from": {
+      "label": "Indore, Madhya Pradesh",
+      "lat": 22.7196,
+      "lng": 75.8577,
+      "state_code": "23"
+    },
+    "to": {
+      "label": "Bhopal, Madhya Pradesh",
+      "lat": 23.2599,
+      "lng": 77.4126,
+      "state_code": "23"
+    },
+    "weight_kg": 2500,
+    "vehicle_type": "mini_truck",
+    "load_type": "general",
+    "quoted_price": 9800,
+    "consignment_value_inr": 25000,
+    "receiver": {
+      "name": "Shree Cement Depot",
+      "phone": "9755443322",
+      "email": "depot@shree-cement.example"
+    },
+    "bids": [
+      {
+        "carrier": "Malwa Logistics",
+        "amount": 9400
+      },
+      {
+        "carrier": "Narmada Carriers",
+        "amount": 9100
+      }
+    ]
+  }
+]

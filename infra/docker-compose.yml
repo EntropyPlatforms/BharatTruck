@@ -1,0 +1,24 @@
+version: '3.9'
+
+# Local dev infrastructure — run this once, all services connect to it
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: logistikos
+      POSTGRES_PASSWORD: logistikos_dev
+      POSTGRES_DB: logistikos
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+volumes:
+  postgres_data:

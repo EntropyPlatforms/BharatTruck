@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bt-app-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "bt-app",
+      "port": 3000,
+      "autoPort": true,
+      "env": {
+        "NEXT_PUBLIC_API_URL": "https://bt-gateway-itcdoenefa-el.a.run.app"
+      }
+    }
+  ]
+}

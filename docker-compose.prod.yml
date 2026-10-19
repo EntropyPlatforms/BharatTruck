@@ -1,0 +1,80 @@
+# =============================================================================
+#  BharatTruck / LogisticOS — Docker Compose Production Override
+#
+#  Usage:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+#  What this changes from the base docker-compose.yml:
+#    - Build targets switch to "production" (compiled Node.js, no tsx watch)
+#    - Volume mounts removed (no live code in production)
+#    - Backend service ports not exposed to host (traffic only through gateway)
+#    - NODE_ENV set to production
+#    - Redis not exposed to host
+# =============================================================================
+
+services:
+
+  bt-gateway:
+    image: bharattruck/bt-gateway:prod
+    environment:
+      # Override these with your actual values:
+      # CORS_ALLOWED_ORIGINS: "https://app.bharattruck.in https://ops.bharattruck.in"
+      # On AWS, override DNS_RESOLVER with your VPC DNS (e.g. 169.254.169.253)
+      DNS_RESOLVER: "127.0.0.11"
+
+  redis:
+    ports: !reset []
+
+  bt-auth-service:
+    build:
+      target: production
+    image: bharattruck/bt-auth-service:prod
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+      OTP_DEV_MODE: "false"
+    volumes: !reset []
+
+  bt-booking-service:
+    build:
+      target: production
+    image: bharattruck/bt-booking-service:prod
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+    volumes: !reset []
+
+  bt-pricing-service:
+    build:
+      target: production
+    image: bharattruck/bt-pricing-service:prod
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+    volumes: !reset []
+
+  bt-payment-service:
+    build:
+      target: production
+    image: bharattruck/bt-payment-service:prod
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+    volumes: !reset []
+
+  bt-cargo-ledger:
+    build:
+      target: production
+    image: bharattruck/bt-cargo-ledger:prod
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+    volumes: !reset []
+
+  bt-ops-web:
+    build:
+      target: production
+    image: bharattruck/bt-ops-web:prod
+    environment:
+      NODE_ENV: production
+    volumes: !reset []

@@ -1,0 +1,299 @@
+# URL map:
+#   /api/auth/       -> AUTH_SERVICE_URL     (OTP, JWT, Google OAuth)
+#   /api/kyc/        -> AUTH_SERVICE_URL
+#   /api/onboarding/ -> AUTH_SERVICE_URL     (driver onboarding)
+#   /api/bookings/   -> BOOKING_SERVICE_URL
+#   /api/quotes/     -> BOOKING_SERVICE_URL
+#   /api/location/   -> BOOKING_SERVICE_URL  (driver GPS pings)
+#   /api/me/         -> BOOKING_SERVICE_URL  (unified home feed; D-38)
+#   /api/tracking/   -> TRACKING_SERVICE_URL (route/eta/track read-through; port 3006)
+#   /api/pricing/    -> PRICING_SERVICE_URL
+#   /api/payments/   -> PAYMENT_SERVICE_URL
+#   /api/cargo/      -> CARGO_SERVICE_URL
+#   /api/fleet/      -> FLEET_SERVICE_URL    (fleet owners, trucks, assignment, P&L; port 3007)
+#   /ws/             -> BOOKING_SERVICE_URL  (WebSocket)
+#   /health          -> gateway itself
+
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+  worker_connections 1024;
+}
+
+http {
+
+  resolver ${DNS_RESOLVER} valid=30s ipv6=off;
+  resolver_timeout 5s;
+
+  gzip on;
+  gzip_types application/json text/plain application/javascript;
+  gzip_min_length 256;
+  gzip_vary on;
+
+  log_format main
+    '$remote_addr [$time_local] '
+    '"$request" $status $body_bytes_sent '
+    'rt=$request_time urt=$upstream_response_time '
+    'id=$req_id upstream=$upstream_addr '
+    '"$http_user_agent"';
+
+  access_log /var/log/nginx/access.log main;
+
+  map $http_x_request_id $req_id {
+    default   $http_x_request_id;
+    ""        $request_id;
+  }
+
+  # CORS: reflect only our own bt-* front-end origins on Cloud Run.
+  # Not a wildcard — any non-matching origin gets no ACAO header and is blocked.
+  #
+  # `fleet-console` is the fleet-owner console (Cloud Run service bt-fleet-console).
+  # It MUST be listed here or every call it makes is blocked by the browser, which
+  # presents as "Failed to fetch" with no server-side trace at all.
+  #
+  # NOTE this map is hardcoded and does NOT read ${CORS_ALLOWED_ORIGINS}, despite
+  # docker-entrypoint.sh substituting that variable and README.md documenting it as
+  # configurable. Adding an origin means editing this regex.
+  #
+  # localhost is deliberately absent, so a dev server pointed at the PROD gateway is
+  # CORS-blocked — true for driver and shipper today as well, not just this app. Local
+  # development needs a locally-run gateway or a proxy, not a hole in the prod allow-list.
+  map $http_origin $cors_origin {
+    default                                              "";
+    "~^https://bt-(shipper|driver|ops-web|fleet-console|app)-[^/]+\.run\.app$" $http_origin;
+  }
+
+  limit_req_zone $binary_remote_addr zone=otp_zone:10m rate=5r/m;
+  limit_req_zone $binary_remote_addr zone=api_zone:20m rate=60r/m;
+  limit_req_status 429;
+
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header X-Request-Id      $req_id;
+
+  # TLS to upstream (Render services use https with SNI)
+  proxy_ssl_server_name on;
+  proxy_ssl_protocols   TLSv1.2 TLSv1.3;
+
+  proxy_next_upstream error timeout http_502 http_503;
+  proxy_next_upstream_timeout 5s;
+  proxy_next_upstream_tries 2;
+
+  server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 10m;
+    proxy_connect_timeout 30s;
+    proxy_send_timeout    30s;
+    proxy_read_timeout    90s;
+    proxy_intercept_errors on;
+
+    # Pass the upstream's hostname so Render routes to the correct service.
+    # proxy_set_header Host is set per-location via $proxy_host (default).
+    # Forward the original host for logging/redirects.
+    proxy_set_header X-Forwarded-Host $host;
+
+    add_header X-Content-Type-Options  "nosniff" always;
+    add_header X-Frame-Options         "DENY" always;
+    add_header X-XSS-Protection        "1; mode=block" always;
+    add_header Referrer-Policy         "strict-origin-when-cross-origin" always;
+
+    # Strip backend CORS headers — gateway is the single CORS authority
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Methods;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Expose-Headers;
+    proxy_hide_header Access-Control-Allow-Credentials;
+    proxy_hide_header Access-Control-Max-Age;
+
+    add_header Access-Control-Allow-Origin  "$cors_origin" always;
+    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Request-Id" always;
+    add_header Access-Control-Expose-Headers "X-Request-Id" always;
+
+    if ($request_method = OPTIONS) {
+      return 204;
+    }
+
+    error_page 502 /errors/502.json;
+    error_page 503 /errors/503.json;
+    error_page 504 /errors/504.json;
+
+    location /errors/502.json {
+      internal;
+      default_type application/json;
+      return 502 '{"error":"bad_gateway","message":"Service temporarily unavailable. Please retry shortly."}\n';
+    }
+
+    location /errors/503.json {
+      internal;
+      default_type application/json;
+      return 503 '{"error":"service_unavailable","message":"Service is starting up or under maintenance."}\n';
+    }
+
+    location /errors/504.json {
+      internal;
+      default_type application/json;
+      return 504 '{"error":"gateway_timeout","message":"Service did not respond in time."}\n';
+    }
+
+    location = /health {
+      access_log off;
+      default_type application/json;
+      return 200 '{"status":"ok","service":"bt-gateway"}\n';
+    }
+
+    location /ws/ {
+      set $booking_ws_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/ws/(.*) /ws/$1 break;
+      proxy_pass $booking_ws_upstream;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade    $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_read_timeout 3600s;
+      proxy_buffering off;
+    }
+
+    location /api/auth/ {
+      limit_req zone=otp_zone burst=10 nodelay;
+      set $auth_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/auth/(.*) /auth/$1 break;
+      proxy_pass $auth_upstream;
+    }
+
+    location /api/kyc/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $auth_kyc_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/kyc/(.*) /kyc/$1 break;
+      proxy_pass $auth_kyc_upstream;
+    }
+
+    location /api/onboarding/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $auth_onboarding_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/onboarding/(.*) /onboarding/$1 break;
+      proxy_pass $auth_onboarding_upstream;
+    }
+
+    # Identity-lifecycle (D-32/D-33) — in-app persona profile creation, the completeness ring, and
+    # acknowledgements. All served by bt-auth-service at the root (/drivers/me, /fleet-owners/me, /me/*).
+    location /api/drivers/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $auth_drivers_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/drivers/(.*) /drivers/$1 break;
+      proxy_pass $auth_drivers_upstream;
+    }
+
+    location /api/fleet-owners/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $auth_fleet_owners_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/fleet-owners/(.*) /fleet-owners/$1 break;
+      proxy_pass $auth_fleet_owners_upstream;
+    }
+
+    location /api/me/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $auth_me_upstream ${AUTH_SERVICE_URL};
+      rewrite ^/api/me/(.*) /me/$1 break;
+      proxy_pass $auth_me_upstream;
+    }
+
+    location /api/bookings/ {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $booking_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/bookings/(.*) /bookings/$1 break;
+      proxy_pass $booking_upstream;
+    }
+
+    location /api/quotes/ {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $quotes_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/quotes/(.*) /quotes/$1 break;
+      proxy_pass $quotes_upstream;
+    }
+
+    location /api/location/ {
+      limit_req zone=api_zone burst=60 nodelay;
+      set $location_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/location/(.*) /location/$1 break;
+      proxy_pass $location_upstream;
+    }
+
+    # Unified home feed (bt-booking-service, routes mounted at /me). GET /api/me/feed
+    # is the "what needs me right now?" aggregate (D-38); the service does its own
+    # JWT + capability resolution. Polled on each home render, so it shares the
+    # dashboard burst rather than the default api rate.
+    #
+    # NOTE the specific prefix: /me/ is SHARED — the feed lives in bt-booking-service,
+    # while /me/completeness and /me/acknowledgements live in bt-auth-service (the
+    # /api/me/ auth block). nginx longest-prefix matching sends /api/me/feed here and
+    # everything else under /api/me/ to auth. Keep this block MORE specific than the
+    # auth /api/me/ block; do not collapse the two — they route to different services.
+    location /api/me/feed {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $me_feed_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/me/(.*) /me/$1 break;
+      proxy_pass $me_feed_upstream;
+    }
+
+    # The feed's companion, GET /api/me/summary — the persona dashboard panels ("how am I
+    # doing?"), also in bt-booking-service. Same reason as the block above: without this
+    # more-specific prefix the shared /api/me/ block would send it to auth and 404.
+    location /api/me/summary {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $me_summary_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/me/(.*) /me/$1 break;
+      proxy_pass $me_summary_upstream;
+    }
+
+    # Maps & Tracking read-through (bt-tracking-service, routes mounted at /tracking).
+    # App calls /api/tracking/route|eta|track/:bookingId ; service does its own JWT+RBAC.
+    # Polled ~every 10s per booking, so a slightly higher burst than the default api routes.
+    location /api/tracking/ {
+      limit_req zone=api_zone burst=40 nodelay;
+      set $tracking_upstream ${TRACKING_SERVICE_URL};
+      rewrite ^/api/tracking/(.*) /tracking/$1 break;
+      proxy_pass $tracking_upstream;
+    }
+
+    location /api/pricing/ {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $pricing_upstream ${PRICING_SERVICE_URL};
+      rewrite ^/api/pricing/(.*) /pricing/$1 break;
+      proxy_pass $pricing_upstream;
+    }
+
+    location /api/payments/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $payment_upstream ${PAYMENT_SERVICE_URL};
+      rewrite ^/api/payments/(.*) /payments/$1 break;
+      proxy_pass $payment_upstream;
+    }
+
+    location /api/cargo/ {
+      limit_req zone=api_zone burst=20 nodelay;
+      set $cargo_upstream ${CARGO_SERVICE_URL};
+      rewrite ^/api/cargo/(.*) /cargo/$1 break;
+      proxy_pass $cargo_upstream;
+    }
+
+    # Fleet-owner console (bt-fleet-service, routes mounted at /fleet).
+    # GET /api/fleet/live is polled ~every 10s with the whole fleet in ONE response, so the
+    # burst matches the other dashboard routes rather than the per-vehicle rate it replaces.
+    location /api/fleet/ {
+      limit_req zone=api_zone burst=30 nodelay;
+      set $fleet_upstream ${FLEET_SERVICE_URL};
+      rewrite ^/api/fleet/(.*) /fleet/$1 break;
+      proxy_pass $fleet_upstream;
+    }
+
+    location / {
+      default_type application/json;
+      return 404 '{"error":"not_found","message":"No route matched this path"}\n';
+    }
+  }
+}

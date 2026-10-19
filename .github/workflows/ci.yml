@@ -1,0 +1,322 @@
+name: ci
+
+# Build/test merge-gate for the monorepo. CD (Cloud Run deploy via WIF) is a SEPARATE workflow,
+# added once the deploy target is confirmed — see docs/legacy-ci-reference/*.deploy.yml.
+#
+# What this gates: for every changed package, `npm ci` + `npm run build` (tsc for services,
+# `next build` for apps — this IS the typecheck+compile gate since there are no separate
+# typecheck scripts) + `npm test --if-present`. Path-filtered so a PR only builds what it touched
+# (a booking change is not blocked by an unrelated service's state). The CTO integrates to `main`
+# only when this is green (docs/BIBLE.md §4.2).
+
+on:
+  pull_request:
+    branches: [main]
+    # labeled/unlabeled are here so the migration hand-apply gate (the `migrations` job)
+    # re-evaluates the instant the `migrations-applied` label is added or removed — otherwise
+    # you could apply the migration, label the PR, and the failing check would never re-run.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, 'feat/**']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # dorny/paths-filter lists a PR's changed files through the API on pull_request events;
+  # without this the token cannot read the PR and both filter jobs die before any filter runs.
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: detect changed packages
+    runs-on: ubuntu-latest
+    outputs:
+      # npm packages only (bt-gateway stripped — it has no package.json; it gets its own job).
+      packages: ${{ steps.pkgs.outputs.packages }}
+      gateway: ${{ steps.filter.outputs['bt-gateway'] }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Any change to shared CI config rebuilds everything (safety).
+          filters: |
+            # Services consuming @bharattruck/shared via a `file:` dep list packages/shared
+            # too: a shared-only change alters their compile input, so it must rebuild them.
+            bt-auth-service: ['bt-auth-service/**', 'packages/shared/**', '.github/workflows/ci.yml']
+            bt-booking-service: ['bt-booking-service/**', 'packages/shared/**', '.github/workflows/ci.yml']
+            bt-pricing-service: ['bt-pricing-service/**', '.github/workflows/ci.yml']
+            bt-payment-service: ['bt-payment-service/**', 'packages/shared/**', '.github/workflows/ci.yml']
+            bt-cargo-ledger: ['bt-cargo-ledger/**', '.github/workflows/ci.yml']
+            bt-tracking-service: ['bt-tracking-service/**', 'packages/shared/**', '.github/workflows/ci.yml']
+            bt-fleet-service: ['bt-fleet-service/**', 'packages/shared/**', '.github/workflows/ci.yml']
+            # packages/shared builds AND tests as a package in its own right. Without this entry
+            # its tests never run in CI — including the cross-tenant fleet-access regression suite,
+            # which is the only thing pinning canFleetAccessBooking's owner guard.
+            packages/shared: ['packages/shared/**', '.github/workflows/ci.yml']
+            # bt-app is the ONE front-end (D-36); driver/shipper/fleet/bt-ops-web were retired 2026-09-26.
+            bt-app: ['bt-app/**', '.github/workflows/ci.yml']
+            bt-gateway: ['bt-gateway/**', '.github/workflows/ci.yml']
+      - id: pkgs
+        name: strip bt-gateway (no package.json) from the build matrix list
+        run: |
+          echo "packages=$(printf '%s' '${{ steps.filter.outputs.changes }}' | jq -c 'map(select(. != "bt-gateway"))')" >> "$GITHUB_OUTPUT"
+
+  build-test:
+    name: build+test ${{ matrix.pkg }}
+    needs: detect
+    if: needs.detect.outputs.packages != '[]' && needs.detect.outputs.packages != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJSON(needs.detect.outputs.packages) }}
+    # Redis is harmless for pkgs that don't need it and required by booking-service's e2e harness.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 5
+    defaults:
+      run:
+        working-directory: ${{ matrix.pkg }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.pkg }}/package-lock.json
+      - name: Install (clean, from lockfile)
+        run: npm ci
+      # Next 16 builds with Turbopack, which needs the native SWC binary. That binary is an OPTIONAL
+      # platform dep often absent from a macOS-generated lockfile, so `npm ci` on the linux runner skips
+      # it and the build dies ("Turbopack ... native bindings not available"). Install the matching one.
+      - name: Ensure Next.js SWC linux binary (Turbopack native bindings)
+        shell: bash
+        run: |
+          if [ -f package.json ] && node -e "process.exit(require('./package.json').dependencies?.next?0:1)"; then
+            NEXT_VER=$(node -p "require('next/package.json').version")
+            echo "Next app detected (v$NEXT_VER) — ensuring @next/swc-linux-x64-gnu@$NEXT_VER"
+            # Best-effort: Next 16 (Turbopack) needs it; Next <=14 has no matching binary and builds via
+            # webpack anyway, so a missing version must NOT fail the job.
+            npm install --no-save "@next/swc-linux-x64-gnu@${NEXT_VER}" || echo "swc binary unavailable for v$NEXT_VER — fine for Next<=14 (webpack build)"
+          else
+            echo "not a Next app — skipping"
+          fi
+      - name: Build (tsc / next build) — typecheck + compile gate
+        run: npm run build --if-present
+      # Lint is REPORT-ONLY for now (non-blocking): the apps carry pre-existing eslint debt
+      # (e.g. react-hooks/set-state-in-effect) that the build doesn't gate on. Cleaning that debt
+      # is a tracked frontend task; once green, drop continue-on-error to make lint a hard gate.
+      - name: Lint (if present, non-blocking)
+        run: npm run lint --if-present
+        continue-on-error: true
+      # bt-payment-service and bt-cargo-ledger's e2e suites boot the REAL bt-booking-service
+      # in-process (with a fake Supabase) to exercise settlement and POD across the service
+      # boundary. That is deliberate and worth keeping -- but it means those jobs need the
+      # SIBLING's node_modules, which the per-package matrix does not install, so the import
+      # died with ERR_MODULE_NOT_FOUND on @bharattruck/shared.
+      - name: Install bt-booking-service deps (cross-service e2e boots it in-process)
+        if: matrix.pkg == 'bt-payment-service' || matrix.pkg == 'bt-cargo-ledger'
+        working-directory: ${{ github.workspace }}
+        run: npm ci --prefix bt-booking-service
+      - name: Test (if present)
+        run: npm test --if-present
+        env:
+          REDIS_URL: redis://localhost:6379
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
+
+  gateway:
+    name: gateway nginx config
+    needs: detect
+    if: needs.detect.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Drives the REAL docker-entrypoint.sh instead of calling envsubst directly. The old check
+      # exported every *_SERVICE_URL itself and never touched the entrypoint, so it could not see
+      # the bug it was meant to catch: an UNSET var makes envsubst emit `set $x ;`, nginx rejects
+      # it, and the gateway fails CLOSED -- one missing var takes every app down instead of one
+      # route. The entrypoint now defaults each URL to an unroutable address; these cases pin that,
+      # including the one CI previously could not express.
+      - name: Render via docker-entrypoint.sh + validate nginx syntax (3 env cases)
+        run: |
+          set -uo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq nginx gettext-base
+
+          # Run the entrypoint's rendering logic without exec'ing nginx, writing to a temp path.
+          mk() {
+            sed 's|^exec nginx.*|echo RENDERED|' bt-gateway/docker-entrypoint.sh \
+              | sed "s|< /etc/nginx/nginx.conf.template|< $PWD/bt-gateway/nginx.conf.template|; s|> /etc/nginx/nginx.conf|> $1|"
+          }
+
+          fail=0
+          run_case() {
+            name="$1"; conf="/tmp/nginx-$2.conf"; shift 2
+            mk "$conf" > /tmp/ep.sh
+            env -i PATH="$PATH" "$@" sh /tmp/ep.sh > /tmp/ep.out 2>&1 || true
+            # Capture first, then grep. `nginx -t` exits NON-ZERO on unrelated runtime gripes
+            # (e.g. it cannot open /var/run/nginx.pid), and under `pipefail` that would sink the
+            # whole pipeline even when grep matched -- reporting a syntax failure that did not
+            # happen. The "syntax is ok" line is the real signal, exactly as the original check
+            # noted; this makes that independent of the exit code.
+            out="$(sudo nginx -t -c "$conf" 2>&1 || true)"
+            if printf '%s' "$out" | grep -q 'syntax is ok'; then
+              echo "  PASS  $name"
+            else
+              echo "  FAIL  $name"
+              printf '%s' "$out" | grep -i emerg | head -2
+              fail=1
+            fi
+          }
+
+          echo "-- gateway config must render to VALID nginx in every env shape --"
+          # 1. Normal production shape.
+          run_case "full env" full \
+            DNS_RESOLVER=127.0.0.11 AUTH_SERVICE_URL=http://auth:3001 BOOKING_SERVICE_URL=http://booking:3002 \
+            TRACKING_SERVICE_URL=http://tracking:3006 PRICING_SERVICE_URL=http://pricing:3003 \
+            PAYMENT_SERVICE_URL=http://payment:3004 CARGO_SERVICE_URL=http://cargo:3005 \
+            FLEET_SERVICE_URL=http://fleet:3007 CORS_ALLOWED_ORIGINS=https://example.com
+          # 2. THE REGRESSION: one URL missing -- what a new service looks like before its env is
+          #    wired, and what used to brick the whole gateway.
+          run_case "FLEET_SERVICE_URL unset" nofleet \
+            DNS_RESOLVER=127.0.0.11 AUTH_SERVICE_URL=http://auth:3001 BOOKING_SERVICE_URL=http://booking:3002 \
+            TRACKING_SERVICE_URL=http://tracking:3006 PRICING_SERVICE_URL=http://pricing:3003 \
+            PAYMENT_SERVICE_URL=http://payment:3004 CARGO_SERVICE_URL=http://cargo:3005 \
+            CORS_ALLOWED_ORIGINS=https://example.com
+          # 3. Worst case: nothing set at all.
+          run_case "no env at all" noenv
+
+          [ "$fail" -eq 0 ] || { echo "gateway config is NOT fail-open"; exit 1; }
+
+  # Both workflows HAND-LIST which packages a `packages/shared/**` change rebuilds (here) and
+  # redeploys (deploy.yml). That list has already been wrong once, and it fails SILENTLY: a service
+  # that consumes shared but is missing from the list still builds green, still merges, and just
+  # keeps serving the old library forever. Derive the true consumer set from the package.json files
+  # and fail when the workflows disagree. Deliberately unconditional (no path filter) — the drift
+  # arrives via a package.json edit that touches nothing under packages/shared.
+  shared-consumers:
+    name: shared-consumer list matches reality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare declared filters against the real `file:` dependents
+        run: |
+          set -uo pipefail
+
+          # Truth: a top-level package declaring @bharattruck/shared as a `file:` dependency.
+          # packages/shared itself is nested one level deeper, so the glob cannot match it.
+          truth() {
+            for pj in */package.json; do
+              dep=$(jq -r '.dependencies["@bharattruck/shared"] // ""' "$pj")
+              case "$dep" in file:*) echo "${pj%/package.json}" ;; esac
+            done | sort -u
+          }
+
+          # Claim: every paths-filter key whose pattern list includes 'packages/shared/**'.
+          # `packages/shared`'s own entry is a self-build, not a consumer — drop it.
+          claim() {
+            grep -E "^ +[A-Za-z0-9_/-]+: \[.*'packages/shared/\*\*'" "$1" \
+              | sed -E "s/^ *([A-Za-z0-9_/-]+):.*/\1/" \
+              | grep -vx 'packages/shared' | sort -u
+          }
+
+          truth > /tmp/truth.txt
+          echo "real consumers of @bharattruck/shared:"; sed 's/^/  /' /tmp/truth.txt
+
+          fail=0
+          for wf in .github/workflows/ci.yml .github/workflows/deploy.yml; do
+            claim "$wf" > /tmp/claim.txt
+            if diff -u /tmp/truth.txt /tmp/claim.txt > /tmp/diff.txt; then
+              echo "  PASS  $wf"
+            else
+              echo "  FAIL  $wf lists the wrong set (-real +listed):"
+              sed 's/^/    /' /tmp/diff.txt
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::A package's @bharattruck/shared dependency and the 'packages/shared/**' path filters have drifted. Add (or remove) 'packages/shared/**' in that package's filter line in BOTH ci.yml and deploy.yml — otherwise a shared-only fix merges green and never reaches the running service."
+            exit 1
+          fi
+
+  # supabase/migrations/ is the source of truth, but migrations are applied BY HAND — CD never
+  # touches the database. A merged-but-unapplied migration is exactly how the repo shipped service
+  # code against tables that did not exist yet (the fleet_members outage): CD deploys the code the
+  # moment the PR merges, and nothing made the pending migration block that. CI cannot VERIFY the
+  # apply — it holds no prod DB credentials by design, and giving PR builds read access to production
+  # would be worse than the problem — so this job gates on a human ATTESTATION instead: a PR that
+  # changes supabase/migrations/ must carry the `migrations-applied` label (added by whoever ran the
+  # SQL against prod) before it may merge. The label add/remove re-runs this check (pull_request
+  # `types:` above). Outside a PR (push) it only reminds — the merge has already happened.
+  # NOTE: this only truly blocks merge when "migration hand-apply gate" is a REQUIRED status check
+  # on main (Settings -> Branches); otherwise a red check is advisory. Create the `migrations-applied`
+  # label once (Issues -> Labels) so it can be applied.
+  migrations:
+    name: migration hand-apply gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          list-files: shell
+          filters: |
+            migrations: ['supabase/migrations/**']
+      - name: Gate merge on the migrations-applied attestation
+        if: steps.filter.outputs.migrations == 'true'
+        env:
+          CHANGED: ${{ steps.filter.outputs.migrations_files }}
+          # True ONLY on a pull_request that carries the label; false/empty on push.
+          HAS_LABEL: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'migrations-applied') }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Migrations are applied BY HAND — this PR does not apply them"
+            echo
+            echo "CD deploys code only. Every file below must be run against Supabase **before this PR"
+            echo "merges**, or the service will answer 503 (\`42P01\` / \`PGRST205\`) against a table that"
+            echo "does not exist yet. Additive DDL is forward-safe — a new table/column sits unused until"
+            echo "the code that reads it deploys — so applying it early never breaks the currently-running"
+            echo "(old) revision. That is why 'apply first, then merge' is always the safe order."
+            echo
+            echo "### Touched by this change"
+            for f in $CHANGED; do echo "- \`$f\`"; done
+            echo
+            echo "### To clear this gate"
+            echo "1. Run each migration above against the prod Supabase project (SQL editor)."
+            echo "2. Regenerate \`supabase/schema/baseline.sql\` (see supabase/schema/README.md)."
+            echo "3. Add the **\`migrations-applied\`** label to this PR to attest you did — the check"
+            echo "   re-runs on the label and turns green, then you can merge."
+            echo
+            echo "### Every migration in the repo (ledger order)"
+            for f in supabase/migrations/*.sql; do echo "- \`$(basename "$f")\`"; done
+            echo
+            echo "> **Limitation:** the label is a human attestation. CI holds no prod DB credentials"
+            echo "> (by design), so it confirms you CLAIM the apply happened, not that it did."
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+
+          # Outside a PR (post-merge push, feat-branch push) there is no PR to label. Remind, never
+          # fail — failing a branch build after the merge has landed helps no one.
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "::notice::migration files present — hand-apply reminder (not gated outside a PR)."
+            exit 0
+          fi
+
+          if [ "$HAS_LABEL" = "true" ]; then
+            echo "::notice::'migrations-applied' label present — you have attested these are applied to prod. Merge allowed."
+            exit 0
+          fi
+
+          echo "::error::This PR changes supabase/migrations/ but is not labelled 'migrations-applied'. Apply the migration(s) to prod FIRST, then add that label to attest it (this check re-runs on the label). See the job summary."
+          exit 1

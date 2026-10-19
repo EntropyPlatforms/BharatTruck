@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#fbb314">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='168 198 274 276'%3E%3Cpath fill='%23fbb314' fill-rule='evenodd' d='M243 202H368Q393 202 393 227V318Q393 324 399 327L430 340Q438 344 438 352V410Q438 420 428 420H362L349 405H261L248 420H182Q172 420 172 410V352Q172 344 180 340L211 327Q218 324 218 318V227Q218 202 243 202ZM236 258H375Q381 258 381 264V306Q381 312 375 312H236Q230 312 230 306V264Q230 258 236 258ZM211 352L244 364Q250 366 250 372V385Q250 391 244 389L210 377Q205 375 205 370V357Q205 350 211 352ZM399 352L366 364Q360 366 360 372V385Q360 391 366 389L400 377Q405 375 405 370V357Q405 350 399 352Z'/%3E%3Crect x='176' y='268' width='30' height='48' rx='8' fill='%23fbb314'/%3E%3Crect x='405' y='268' width='30' height='48' rx='8' fill='%23fbb314'/%3E%3Crect x='178' y='432' width='50' height='38' rx='8' fill='%23fbb314'/%3E%3Crect x='384' y='432' width='50' height='38' rx='8' fill='%23fbb314'/%3E%3C/svg%3E">
+<title>BharatTruck Build Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Light theme only (2026-10 redesign), matching the BharatTruck app:
+     one 880px column — top bar, header with status tiles, filter rows, dated timeline
+     of entry cards with a status stripe, Up next group, legend, footer. */
+  :root {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --ink: #14181f;
+    --muted: #5b6676;
+    --faint: #8a95a5;
+    --line: #e3e7ee;
+    --brand: #f2a516;
+    --brand-soft: #fff8e8;
+    --brand-line: #fcdd8f;
+    --blue: #2457f5;
+    --live: #34c38f; --live-ink: #12805c;    --live-soft: #e8f6ef;   --live-line: #b9e4cf;
+    --deploy: #ff9f43; --deploy-ink: #b26a00;  --deploy-soft: #fff4e0; --deploy-line: #f7d49a;
+    --review: #a86bff; --review-ink: #6d4bd8;  --review-soft: #f1edfd; --review-line: #d6cbf7;
+    --next: #7890ad; --next-ink: #5b6676;    --next-soft: #eef1f5;   --next-line: #d7dde6;
+    --sans: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+  a { color: var(--blue); }
+  .wrap { max-width: 880px; margin: 0 auto; padding-block: 0 48px; padding-inline: 20px; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 16px; border-bottom: 1px solid var(--line); }
+  .logo { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+  .logo svg { width: 30px; height: 30px; }
+  .word { font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: var(--ink); }
+  .word b { color: #fbb314; font-weight: 800; }
+  .top a.app { font-size: 14px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .top a.app:hover { text-decoration: underline; }
+  svg.ext { width: 14px; height: 14px; flex: none; }
+  .foot a { display: inline-flex; align-items: center; gap: 4px; }
+
+  header.head { padding-top: 28px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 44px; line-height: 1.05; font-weight: 800; letter-spacing: -0.03em; margin: 8px 0 0; text-wrap: balance; }
+  .lede { color: var(--muted); margin: 10px 0 0; max-width: 66ch; }
+  .updated { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+  .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
+  .tile .dot { width: 14px; height: 14px; grid-row: 1; }
+  .tile .lab { font-size: 14px; font-weight: 600; grid-column: 2; }
+  .tile .n { grid-column: 2; font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .cap { grid-column: 2; font-size: 12.5px; color: var(--muted); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.live { background: var(--live); } .dot.deploy { background: var(--deploy); }
+  .dot.review { background: var(--review); } .dot.next { background: var(--next); }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 18px; }
+  .filters + .filters { margin-top: 10px; }
+  .filters .k { width: 56px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .chip { font: 600 13.5px var(--sans); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .chip:hover { border-color: #cbd2dc; }
+  .chip[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); color: #8f570b; box-shadow: inset 0 0 0 1px var(--brand); }
+  .chip:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  .group { margin-top: 28px; }
+  .group > h2 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 12px; }
+  .entry { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px 14px 22px; overflow: hidden; }
+  .entry + .entry { margin-top: 10px; }
+  .entry::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--next-line); }
+  .entry.live::before { background: var(--live); } .entry.deploy::before { background: var(--deploy); }
+  .entry.review::before { background: var(--review); } .entry.next::before { background: var(--next); }
+  .row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .when { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .pill { font-size: 12.5px; font-weight: 600; border-radius: 8px; padding: 3px 10px; border: 1px solid var(--line); background: #f8f9fb; color: #343d4b; display: inline-flex; align-items: center; gap: 6px; }
+  .pill.st.live { background: var(--live-soft); border-color: var(--live-line); color: var(--live-ink); }
+  .pill.st.deploy { background: var(--deploy-soft); border-color: var(--deploy-line); color: var(--deploy-ink); }
+  .pill.st.review { background: var(--review-soft); border-color: var(--review-line); color: var(--review-ink); }
+  .pill.st.next { background: var(--next-soft); border-color: var(--next-line); color: var(--next-ink); }
+  .pill.pr { font-family: var(--mono); color: var(--blue); background: #eef3ff; border-color: #dce6ff; }
+  .entry h3 { font-size: 17px; font-weight: 700; margin: 10px 0 0; line-height: 1.35; text-wrap: balance; }
+  .entry .sum { margin: 4px 0 0; color: #343d4b; max-width: 72ch; }
+  .see { margin-top: 10px; border: 1px solid var(--line); background: #f8f9fb; border-radius: 10px; padding: 9px 12px; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: #343d4b; }
+  .see svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--muted); }
+  .see b { color: var(--ink); white-space: nowrap; }
+  .group.upnext .entry { padding-block: 12px; }
+  .group.upnext .entry h3 { font-size: 15.5px; margin-top: 8px; }
+  .group.upnext .entry .sum { font-size: 14px; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+
+  .legend { margin-top: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; display: grid; grid-template-columns: auto repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .legend h2 { font-size: 15px; font-weight: 800; margin: 0; align-self: center; white-space: nowrap; }
+  .legend .it { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; font-size: 13px; }
+  .legend .it .dot { margin-top: 6px; }
+  .legend .it strong { font-weight: 700; }
+  .legend .it span.d { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+  .foot { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--muted); }
+  .foot .sep { width: 1px; height: 14px; background: var(--line); }
+  .foot .brand { margin-left: auto; }
+
+  @media (max-width: 720px) {
+    h1 { font-size: 36px; }
+    .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .legend h2 { grid-column: 1 / -1; }
+    .filters .k { width: 100%; }
+    .when { margin-left: 0; width: 100%; }
+    .foot .brand { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .chip { transition: background .15s, border-color .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="logo" href="https://bt-app-itcdoenefa-el.a.run.app" rel="noopener" aria-label="BharatTruck">
+      <svg viewBox="168 198 274 276" aria-hidden="true"><path fill="#fbb314" fill-rule="evenodd" d="M243 202H368Q393 202 393 227V318Q393 324 399 327L430 340Q438 344 438 352V410Q438 420 428 420H362L349 405H261L248 420H182Q172 420 172 410V352Q172 344 180 340L211 327Q218 324 218 318V227Q218 202 243 202ZM236 258H375Q381 258 381 264V306Q381 312 375 312H236Q230 312 230 306V264Q230 258 236 258ZM211 352L244 364Q250 366 250 372V385Q250 391 244 389L210 377Q205 375 205 370V357Q205 350 211 352ZM399 352L366 364Q360 366 360 372V385Q360 391 366 389L400 377Q405 375 405 370V357Q405 350 399 352Z"/><rect x="176" y="268" width="30" height="48" rx="8" fill="#fbb314"/><rect x="405" y="268" width="30" height="48" rx="8" fill="#fbb314"/><rect x="178" y="432" width="50" height="38" rx="8" fill="#fbb314"/><rect x="384" y="432" width="50" height="38" rx="8" fill="#fbb314"/></svg>
+      <span class="word">Bharat<b>Truck</b></span>
+    </a>
+    <a class="app" id="app-link" href="https://bt-app-itcdoenefa-el.a.run.app" rel="noopener">Go to app <svg class="ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg></a>
+  </div>
+
+  <header class="head">
+    <div class="eyebrow">BharatTruck · Project progress</div>
+    <h1>Build Log</h1>
+    <p class="lede">Every feature, fix and document delivered on the BharatTruck platform, with whether it is on the live app yet. Newest first.</p>
+    <p class="updated" id="updated">Loading…</p>
+    <div class="strip" id="strip"></div>
+  </header>
+
+  <div class="filters" id="status-filters" role="group" aria-label="Filter by status"></div>
+  <div class="filters" id="area-filters" role="group" aria-label="Filter by area"></div>
+
+  <main id="timeline"></main>
+
+  <section class="legend" aria-label="How to read the statuses">
+    <h2>How to read this</h2>
+    <div class="it"><span class="dot live"></span><strong>Live</strong><span class="d">Feature is in the live app.</span></div>
+    <div class="it"><span class="dot deploy"></span><strong>Deploying</strong><span class="d">Merged; the automatic deploy is rolling it out.</span></div>
+    <div class="it"><span class="dot review"></span><strong>In review</strong><span class="d">Code is written, waiting for review.</span></div>
+    <div class="it"><span class="dot next"></span><strong>Up next</strong><span class="d">Planned but not started.</span></div>
+  </section>
+  <div class="foot">
+    <a id="app-link-2" href="https://bt-app-itcdoenefa-el.a.run.app" rel="noopener">View the live app <svg class="ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg></a>
+    <span class="sep" aria-hidden="true"></span>
+    <span>This page rebuilds itself automatically every time code is merged and deployed.</span>
+    <span class="brand">BharatTruck</span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DATA = { updated: '', areas: [], entries: [] };
+  var STATUS = { live: 'Live', deploy: 'Deploying', review: 'In review', next: 'Up next' };
+  var CAPTION = { live: 'In the live app', deploy: 'Building and deploying', review: 'In code review', next: 'Planned for next' };
+  var ORDER = ['live', 'deploy', 'review', 'next'];
+  var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+  var state = { status: 'all', area: 'all' };
+  try {
+    var saved = JSON.parse(localStorage.getItem('bt-build-log-filters') || 'null');
+    if (saved && typeof saved === 'object') { state.status = saved.status || 'all'; state.area = saved.area || 'all'; }
+  } catch (e) {}
+  function persist() { try { localStorage.setItem('bt-build-log-filters', JSON.stringify(state)); } catch (e) {} }
+
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function fmtDate(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function shortDate(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  }
+
+  function header() {
+    var when = DATA.generated_at ? new Date(DATA.generated_at) : null;
+    document.getElementById('updated').textContent = when && !isNaN(when)
+      ? 'Updated ' + when.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        + (DATA.live_sha ? ' · live build ' + String(DATA.live_sha).slice(0, 7) : '')
+      : 'Loading…';
+    if (DATA.app_url) {
+      ['app-link', 'app-link-2'].forEach(function (id) { var a = document.getElementById(id); if (a) a.href = DATA.app_url; });
+    }
+    var strip = document.getElementById('strip'); strip.textContent = '';
+    ORDER.forEach(function (s) {
+      var n = (DATA.entries || []).filter(function (e) { return e.status === s; }).length;
+      var t = el('div', 'tile');
+      t.appendChild(el('span', 'dot ' + s));
+      t.appendChild(el('div', 'lab', STATUS[s]));
+      t.appendChild(el('div', 'n', String(n)));
+      t.appendChild(el('div', 'cap', CAPTION[s]));
+      strip.appendChild(t);
+    });
+  }
+
+  function chips(container, label, options, key) {
+    container.textContent = '';
+    container.appendChild(el('span', 'k', label));
+    options.forEach(function (o) {
+      var b = el('button', 'chip'); b.type = 'button';
+      b.id = 'chip-' + key + '-' + o.value.replace(/\W+/g, '-').toLowerCase();
+      if (o.dot) b.appendChild(el('span', 'dot ' + o.dot));
+      b.appendChild(document.createTextNode(o.label));
+      b.setAttribute('aria-pressed', state[key] === o.value ? 'true' : 'false');
+      b.addEventListener('click', function () { state[key] = o.value; persist(); render(); });
+      container.appendChild(b);
+    });
+  }
+
+  function render() {
+    chips(document.getElementById('status-filters'), 'Status',
+      [{ value: 'all', label: 'All' }].concat(ORDER.map(function (s) { return { value: s, label: STATUS[s], dot: s }; })), 'status');
+    chips(document.getElementById('area-filters'), 'Area',
+      [{ value: 'all', label: 'All' }].concat((DATA.areas || []).map(function (a) { return { value: a, label: a }; })), 'area');
+
+    var list = (DATA.entries || []).filter(function (e) {
+      return (state.status === 'all' || e.status === state.status) && (state.area === 'all' || (e.areas || []).indexOf(state.area) >= 0);
+    });
+    var dated = list.filter(function (e) { return e.status !== 'next'; })
+      .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : (b.pr || 0) - (a.pr || 0); });
+    var next = list.filter(function (e) { return e.status === 'next'; });
+
+    var tl = document.getElementById('timeline'); tl.textContent = '';
+    if (list.length === 0) { tl.appendChild(el('p', 'empty', 'Nothing matches these filters yet.')); return; }
+
+    var groups = {}; var keys = [];
+    dated.forEach(function (e) { if (!groups[e.date]) { groups[e.date] = []; keys.push(e.date); } groups[e.date].push(e); });
+    keys.forEach(function (k) { tl.appendChild(group(fmtDate(k), groups[k], false)); });
+    if (next.length) tl.appendChild(group('Up next', next, true));
+  }
+
+  function group(title, entries, upnext) {
+    var g = el('section', 'group' + (upnext ? ' upnext' : ''));
+    g.appendChild(el('h2', null, title));
+    entries.forEach(function (e) { g.appendChild(entry(e, upnext)); });
+    return g;
+  }
+
+  function entry(e, upnext) {
+    var a = el('article', 'entry ' + e.status);
+    var r = el('div', 'row1');
+    var st = el('span', 'pill st ' + e.status); st.appendChild(el('span', 'dot ' + e.status)); st.appendChild(document.createTextNode(STATUS[e.status]));
+    r.appendChild(st);
+    (e.areas || []).forEach(function (ar) { r.appendChild(el('span', 'pill', ar)); });
+    if (e.pr) r.appendChild(el('span', 'pill pr', 'PR #' + e.pr));
+    r.appendChild(el('span', 'when', upnext ? 'Planned' : shortDate(e.date)));
+    a.appendChild(r);
+    a.appendChild(el('h3', null, e.title));
+    if (e.summary) a.appendChild(el('p', 'sum', e.summary));
+    if (e.see && !upnext) {
+      var s = el('div', 'see');
+      s.innerHTML = EYE;
+      var txt = el('span'); txt.appendChild(el('b', null, 'You will see: ')); txt.appendChild(document.createTextNode(e.see));
+      s.appendChild(txt);
+      a.appendChild(s);
+    }
+    return a;
+  }
+
+  fetch('./progress.json', { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(function (json) { DATA = json; header(); render(); })
+    .catch(function () {
+      document.getElementById('updated').textContent = 'Could not load the log right now. Reload in a minute.';
+      document.getElementById('timeline').textContent = '';
+    });
+  header(); render();
+})();
+</script>
+</body>
+</html>

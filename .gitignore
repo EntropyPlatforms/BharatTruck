@@ -1,0 +1,19 @@
+# deps / build
+node_modules/
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+# env & secrets
+.env
+.env.*
+!.env.example
+# os / editor
+.DS_Store
+# macOS Archive Utility resource forks — PR #21 landed 199 of these by
+# committing an unzipped folder; never let that recur.
+__MACOSX/
+*.log
+.wrangler/
+supabase/.temp/

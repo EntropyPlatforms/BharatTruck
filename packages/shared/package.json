@@ -1,0 +1,64 @@
+{
+  "name": "@bharattruck/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared libraries for BharatTruck services — reused cross-cutting code lives HERE, not copy-pasted per service (error envelope, auth/JWT, Supabase service-role client, Redis, Fastify bootstrap, env/config validation).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "import": "./dist/db.js"
+    },
+    "./fleet": {
+      "types": "./dist/fleet.d.ts",
+      "import": "./dist/fleet.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications.d.ts",
+      "import": "./dist/notifications.js"
+    },
+    "./personas": {
+      "types": "./dist/personas.d.ts",
+      "import": "./dist/personas.js"
+    },
+    "./india-states": {
+      "types": "./dist/india-states.d.ts",
+      "import": "./dist/india-states.js"
+    },
+    "./expenses": {
+      "types": "./dist/expenses.d.ts",
+      "import": "./dist/expenses.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test test/*.test.mts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.100.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.6",
+    "tsx": "^4.23.1",
+    "typescript": "^5.4.5"
+  }
+}
