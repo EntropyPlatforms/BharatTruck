@@ -1,0 +1,690 @@
+[
+  {
+    "id": "legacy-pr-215",
+    "pr": null,
+    "date": "2026-10-17",
+    "status": "live",
+    "title": "GSTIN verified by OTP, vehicle class from weight, price (i)",
+    "summary": "Verify your GSTIN with an OTP to the registered mobile (no API keys) and have the company name filled from the GST registration; Post a Load now picks the vehicle class from the weight; the quote shows one final price with an (i) for a rough split.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-214",
+    "pr": null,
+    "date": "2026-10-17",
+    "status": "live",
+    "title": "A dashboard for every person, trip status history and alerts",
+    "summary": "",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-213",
+    "pr": null,
+    "date": "2026-10-15",
+    "status": "live",
+    "title": "PAN verification is now required; quotes show one price; GST check shows the firm name",
+    "summary": "Every account must verify its PAN (number, name and date of birth checked against the PAN record) before posting a load or bidding — scan the card or type it in Settings. The price quote now shows only the final price. The GST check shows the firm's trading name, with the registered name beneath it.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-212",
+    "pr": null,
+    "date": "2026-10-15",
+    "status": "live",
+    "title": "The daily test run now reports which outside services are switched on and answering",
+    "summary": "The test portal gets an \"Outside services\" section: document reading, GST portal lookups, DigiLocker, Razorpay and the e-way bill portal are each checked on the live site every day — switched on and answering, or switched off with the reason.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-209",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "E-way bills can now be generated from the app on the NIC portal",
+    "summary": "Instead of generating an e-way bill on the government portal and copying it in, a shipper links their e-way bill portal login once in Settings and then generates the bill from the load itself — invoice, consignee, goods, vehicle and distance prefilled. From the same screen they can change the vehicle, extend validity, cancel the bill on the portal, refresh it and download the PDF. Switched on once the portal keys are set up and tested on the portal's test system.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-208",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "Licences verified from the transport department via DigiLocker; GST numbers checked on the GST portal",
+    "summary": "Drivers can verify their driving licence in one step through DigiLocker — the record comes from the transport department itself and is marked verified immediately. Businesses can check a GST number on the GST portal: whether it is active, whose it is, and whether the business files its returns. Newly added bank accounts are confirmed with the bank. All of this switches on once the verification service keys are added.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-207",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "Invoices and transporter consignment notes can be read from a photo",
+    "summary": "On a load's Documents tab, a photo of a transporter's consignment note (LR), a GST invoice or a plain bill is now read to fill the forms: invoice number and value, the e-way bill number, consignor and consignee GST numbers, freight charges and whether freight is To Pay, taxes and totals. The person checks the values before issuing anything. Works with sideways photos. Needs the document-reading service switched on for the bookings service.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-206",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "GST and PAN are now properly validated, and can be filled by scanning the documents",
+    "summary": "A GSTIN is now checked the way the GST portal checks it (state code, embedded PAN, check character), so a mistyped number is refused with the reason. Businesses can photograph their GST certificate and PAN card to fill the numbers in, and the two are checked against each other. Drivers can photograph their Aadhaar card to fill in their name and home city; the Aadhaar number itself is never read into the system. Typing stays available everywhere.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-205",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "Shippers are told when a load is delivered and payment is due",
+    "summary": "When a load is delivered, the shipper now sees it in Latest activity and in a popup that lists every delivered load waiting for payment, each with a Pay button that opens the payment step directly. No need to open loads one by one to check.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-204",
+    "pr": null,
+    "date": "2026-10-09",
+    "status": "live",
+    "title": "Clearer message when a trip step is blocked",
+    "summary": "When a step such as Start trip is blocked, the app now says why — for example that the shipper must issue the tax invoice first — instead of a generic \"not allowed\" message.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-203",
+    "pr": null,
+    "date": "2026-10-03",
+    "status": "live",
+    "title": "Drivers with their own truck can now open Find work and bid",
+    "summary": "A driver who owns a truck but does not run a fleet was told about new loads on the home page, but the Find work page showed \"Not found\". They now see the open loads and their own bids there, the same as a fleet does.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-202",
+    "pr": null,
+    "date": "2026-10-03",
+    "status": "live",
+    "title": "Driver sign-up by scanning documents — built, waiting to be switched on",
+    "summary": "Drivers will be able to photograph their driving licence and a cancelled cheque or passbook, and the licence number, validity, vehicle classes, account number, IFSC and bank name are filled in for them to check and save. The photo is read and not stored. It stays switched off until the Google document-reading service is set up for the project; until then drivers type the details as before.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-201",
+    "pr": null,
+    "date": "2026-10-03",
+    "status": "live",
+    "title": "Online payment for shippers (Razorpay) — built, waiting for account keys",
+    "summary": "Shippers will be able to pay the agreed freight online by card, UPI or netbanking through Razorpay once the trip is delivered. The payment is confirmed with Razorpay before the trip is marked paid, and a payment is never taken twice. It stays switched off until the Razorpay account keys are added; until then shippers continue to record cash, UPI or bank payments as before.",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-200",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Separate scenario pages for shippers and drivers",
+    "summary": "The test portal now has a Shipper page and a Driver page. Each shows the same sample loads from that person's side: what they do, what they see, and what they are stopped from doing.",
+    "see": "Open the test portal and use the Shipper scenarios and Driver scenarios buttons at the top.",
+    "areas": [
+      "Platform",
+      "Shipper",
+      "Driver"
+    ]
+  },
+  {
+    "id": "legacy-pr-199",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Try your own load scenario on the test portal",
+    "summary": "The test portal now has a form where you describe a load (cities, weight, truck, price, bids) and watch it played step by step from posting to payment, including every refused attempt. It runs on a practice copy, never on the live site.",
+    "see": "Open the test portal and scroll to \"Try your own scenario\".",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-197",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "New phone backgrounds",
+    "summary": "On phones, the home and sign-in pages now use a tall sunset highway picture with the India map, and a night version in the dark theme.",
+    "see": "Open the site on a phone.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-196",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Full load journeys on the test portal",
+    "summary": "The test portal now plays complete sample loads from posting to payment on every run and shows each step: bids, award, pickup documents, the receiver's delivery code and payment, including every attempt by the wrong person that is refused.",
+    "see": "Open the test portal and look for \"Scenarios: one load from posting to payment\".",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-195",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Photo backgrounds on phones",
+    "summary": "The home and sign-in pages now show the highway photo on phones too, with the night photo in the dark theme.",
+    "see": "Open the site on a phone.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-193",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Automated test portal with a PDF report",
+    "summary": "Every release is now tested automatically: each service's tests are run and the live site is checked end to end. The results appear on a new test portal, with a PDF report you can download.",
+    "see": "The test portal link (shared separately) shows the latest run and a Download PDF report button.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-192",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Truck drives on the road",
+    "summary": "The truck on the home page map now has its wheels on the route line and moves more slowly.",
+    "see": "Open the home page.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-191",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Smoother truck on the home page",
+    "summary": "The truck on the home page map is smaller, slower and now drives along the route line.",
+    "see": "Open the home page.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-190",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Night illustration for empty pages",
+    "summary": "In the dark theme, empty pages now show a night-time version of the truck illustration.",
+    "see": "Open Trips or Drivers with nothing in them, in dark mode.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-189",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Tidier Settings page",
+    "summary": "The Settings cards now stack without the empty space that used to appear under the GSTIN card.",
+    "see": "Open Settings on a computer.",
+    "areas": [
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-188",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Moving truck on the home page",
+    "summary": "On the home page, a truck now drives along the Nagpur to Pune route on the sample trip card, in both light and dark themes.",
+    "see": "Open the home page and watch the map card.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-187",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Maps go dark with the dark theme",
+    "summary": "In the dark theme, every map now uses a dark style to match the rest of the page.",
+    "see": "Open Live Fleet or the Dashboard after 7 pm, or with Dark chosen in Settings.",
+    "areas": [
+      "Fleet owner",
+      "Shipper",
+      "Driver"
+    ]
+  },
+  {
+    "id": "legacy-pr-186",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "New Live Fleet layout and a steadier side menu",
+    "summary": "Live Fleet now shows your trucks in a table beside the map, with driver, status, trip and last update for each. The side menu no longer gets stuck open or closed. Empty pages show a new illustration, and the Google sign-in button matches the dark theme.",
+    "see": "Open Live Fleet; hover over the side menu and click between pages.",
+    "areas": [
+      "Fleet owner",
+      "Shipper",
+      "Driver"
+    ]
+  },
+  {
+    "id": "legacy-pr-185",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Dark theme that follows the time of day",
+    "summary": "BharatTruck now turns dark in the evening (7 pm to 6 am India time) and light during the day, with a night-time highway photo. In Settings → Appearance you can keep it automatic or fix it to light or dark.",
+    "see": "Open the site after 7 pm, or go to Settings → Appearance.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-184",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Home page fills wide screens; sample load card is clickable",
+    "summary": "The home and sign-in pages now use the full width of large monitors. On the home page you can click Live tracking, Bids and Documents on the sample load card to see each view.",
+    "see": "Open the home page on a large screen and click the three tabs on the card.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-183",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Home page sample trip is now a picture",
+    "summary": "The sample trip card on the home page is now a still illustration instead of a live map, so the page loads faster and costs less to serve.",
+    "see": "Open the home page.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-182",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Smoother side menu and scrolling",
+    "summary": "The side menu now opens smoothly without the page shifting, and pages scroll more smoothly over the photo banners.",
+    "see": "Hover over the side menu and scroll the home page.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-181",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Sign-in background tidy-up",
+    "summary": "The top bar on the sign-in page is now clear, so the India map in the background photo shows in full.",
+    "see": "Open the sign-in page on a computer.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-180",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "New Post a Load layout",
+    "summary": "Posting a load now shows your progress across the steps, a map of the route once pickup and drop are chosen, and tips for getting better bids. Page buttons moved under each page title.",
+    "see": "Open Post a Load on a computer and pick a pickup and drop.",
+    "areas": [
+      "Shipper",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-179",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Photo banner on every page, fuller dashboard, hover side menu",
+    "summary": "Every page now opens with the sunset highway banner, and pages fill wide screens instead of sitting in the middle. The dashboard adds a recent trips table, a \"needs attention\" list and a revenue-versus-costs chart. The side menu now sits as a slim strip of icons and opens when you move the mouse over it.",
+    "see": "Open Home, the Dashboard and My Loads on a computer, and hover over the side menu.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-178",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "New sign-in background",
+    "summary": "The sign-in and account screens now show the sunset highway photograph with the India route map behind the form.",
+    "see": "Open the sign-in page on a computer.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-177",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "A fuller, more modern look across the site",
+    "summary": "The home page, sign-in and fleet dashboard have been redesigned with the highway photograph, richer cards and clearer shortcuts, and every other page now shares the same header banner, card style and grouped side menu. The dashboard greets you by name and shows the live map, utilisation and cost split as charts.",
+    "see": "Open the home page, sign in, then the Dashboard; every page header and the side menu have the new look.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-176",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Real maps across the app",
+    "summary": "The home page, load details, driver trips and the fleet dashboard now show real Google maps of the route and trucks instead of drawings. Before a truck is booked, the route shows as a dashed pickup-to-drop line; once the trip starts, it follows the road.",
+    "see": "Open a load before it is booked, a driver's trip, My Trips, or the Dashboard's \"On the road now\" card.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-175",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Live Fleet no longer signs you out; dashboard estimates notice shows every time",
+    "summary": "Opening Live Fleet could sign some users out because one service rejected a valid login; it now accepts it. The dashboard now reminds you every time you open it that all figures are estimates based on historic data and may differ from actual values.",
+    "see": "Live Fleet opens normally; the estimates notice appears when you open the Dashboard.",
+    "areas": [
+      "Fleet owner",
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-174",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "The whole app has a new, cleaner light design",
+    "summary": "Every screen, from sign-in to the fleet dashboard, now uses the new BharatTruck look: the truck logo, a white sidebar, clearer cards and status colours, and screens laid out for both desktop and phone. Nothing about how the app works has changed.",
+    "see": "The new design the next time you open the app, including a new sign-in page and a public landing page.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner",
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-173",
+    "pr": null,
+    "date": "2026-10-02",
+    "status": "live",
+    "title": "Light redesign foundation — palette, fonts, shell, shared …",
+    "summary": "",
+    "see": "",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-172",
+    "pr": null,
+    "date": "2026-09-30",
+    "status": "live",
+    "title": "A live progress page for you",
+    "summary": "A page that shows every feature, fix and document on this project and whether it is on the live app yet. It updates itself the moment code is merged and deployed.",
+    "see": "The link we send you; open it any time.",
+    "areas": [
+      "Documents"
+    ]
+  },
+  {
+    "id": "legacy-pr-171",
+    "pr": null,
+    "date": "2026-09-30",
+    "status": "live",
+    "title": "Drivers can join with just their licence and details; adding a truck now needs GST; dashboard states that figures are estimates",
+    "summary": "A driver registers with their driving licence, personal details and payout bank account, with no truck. Adding a truck (single or bulk) is refused until a GSTIN is saved in Settings. Trucks already on the platform are unaffected. The fleet dashboard now opens with a notice that every number is modelled from historic trip data and is not exact.",
+    "see": "A new “Driver profile” page for drivers. On Trucks, a notice and disabled Add buttons until a GSTIN is on file. A one-time notice on the Dashboard each session.",
+    "areas": [
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-170",
+    "pr": null,
+    "date": "2026-09-27",
+    "status": "live",
+    "title": "Every dashboard formula audited and locked with tests; utilisation no longer shows 0% for unknowns",
+    "summary": "All KPI calculations (net profit, EMI coverage, per-km costs, driver leaderboard, fuel comparison) were re-derived by hand and pinned by 60 automated checks. Weight and volume utilisation now count only trips where both the load and the truck capacity are known, and show how many trips that is.",
+    "see": "On Utilisation: “Declared on N trips” under Volume and Tonnage, and “—” instead of 0% when unknown.",
+    "areas": [
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-169",
+    "pr": null,
+    "date": "2026-09-27",
+    "status": "live",
+    "title": "Automated checks on every code change fixed",
+    "summary": "The pre-merge check pipeline had been failing silently on every change since a permissions change; it now runs the full test suites on each pull request.",
+    "see": "Nothing visible in the app. Each change is now tested before it merges.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-168",
+    "pr": null,
+    "date": "2026-09-26",
+    "status": "live",
+    "title": "One unified app replaces the four old front-ends",
+    "summary": "The separate driver, shipper, fleet and ops sites were retired. Everyone signs in to the one BharatTruck app, which shows the surfaces each account has earned. Google Sign-In is enabled on it.",
+    "see": "Old links no longer work; the single app link is the only entry point.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-167",
+    "pr": null,
+    "date": "2026-09-26",
+    "status": "live",
+    "title": "Security updates to third-party dependencies",
+    "summary": "All critical vulnerability alerts on the codebase were cleared (378 open alerts down to 82, 8 critical down to 0 after the front-end retirement).",
+    "see": "Nothing visible. Reduced security risk.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-166",
+    "pr": null,
+    "date": "2026-09-26",
+    "status": "live",
+    "title": "Dashboard “Net profit” is now the true all-in net",
+    "summary": "The headline used to show gross margin under the label Net profit, and tolls and other trip expenses were never subtracted anywhere. Net profit now equals revenue minus running cost minus tolls and other actuals minus EMI and fixed costs. Some trucks flip from “covered” to “short” as a result; that is the corrected reading.",
+    "see": "Dashboard headline reads “after ₹X tolls & other, ₹Y EMI & fixed”; the old figure is labelled Gross margin.",
+    "areas": [
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-165",
+    "pr": null,
+    "date": "2026-09-26",
+    "status": "live",
+    "title": "Encryption key rotated and its committed default removed",
+    "summary": "Bank account numbers are encrypted at rest. The key in use was a default that had been committed to the code; it was rotated and the default removed so it can never be reused.",
+    "see": "Nothing visible. Stored bank details are protected by a fresh, private key.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-164",
+    "pr": null,
+    "date": "2026-09-26",
+    "status": "live",
+    "title": "Create-account flow fixed: unverified accounts reach the code screen; email failures are reported",
+    "summary": "Signing in with an account that never entered its verification code used to dead-end with a generic error. It now goes straight to the code screen with a resend option. If the verification email cannot be sent, the app says so.",
+    "see": "Sign in → “Enter the code we emailed you” for unverified accounts. Clear error when email delivery fails.",
+    "areas": [
+      "Shipper",
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-162",
+    "pr": null,
+    "date": "2026-09-20",
+    "status": "live",
+    "title": "Verified delivery: driver uploads proof, fleet owner approves",
+    "summary": "At delivery the driver uploads the signed invoice and a geotagged photo of the vehicle. The fleet owner reviews and approves or rejects it from a Deliveries page.",
+    "see": "Drivers: an upload step at delivery. Fleet owners: a “Deliveries” page with approve / reject.",
+    "areas": [
+      "Driver",
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-159",
+    "pr": null,
+    "date": "2026-09-20",
+    "status": "live",
+    "title": "Fleet console outage fixed and a deploy safeguard added",
+    "summary": "A deploy went out ahead of its database changes and broke the fleet Live view. The changes were applied, the bad revision was routed out, and a gate now blocks any merge that touches the database until those changes are confirmed applied.",
+    "see": "Live Fleet works again. Future deploys cannot repeat this.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-157",
+    "pr": null,
+    "date": "2026-09-20",
+    "status": "live",
+    "title": "Bulk truck upload from CSV, PDF or a photo of the register",
+    "summary": "A fleet owner can upload their existing truck register as a CSV, a PDF or a scanned image; PDFs and images are read by OCR and each row is added or reported with its error.",
+    "see": "Trucks → “Bulk upload”. Partial success shows which rows failed and why.",
+    "areas": [
+      "Fleet owner"
+    ]
+  },
+  {
+    "id": "legacy-pr-156",
+    "pr": null,
+    "date": "2026-09-20",
+    "status": "live",
+    "title": "KYC provider seam with a sandbox provider",
+    "summary": "Identity verification is wired behind a provider interface, with a sandbox provider for testing. A real provider can be plugged in without changing the app.",
+    "see": "Nothing visible yet; verification badges light up when a real provider is connected.",
+    "areas": [
+      "Platform"
+    ]
+  },
+  {
+    "id": "legacy-pr-155",
+    "pr": null,
+    "date": "2026-09-19",
+    "status": "live",
+    "title": "Scan an invoice to fill pickup and drop",
+    "summary": "When posting a load, a photo or PDF of the invoice is read by OCR and the pickup and drop addresses are filled in. Handwritten invoices still need manual entry.",
+    "see": "Post a Load → scan invoice. Addresses pre-filled for printed invoices.",
+    "areas": [
+      "Shipper"
+    ]
+  },
+  {
+    "id": "legacy-pr-154",
+    "pr": null,
+    "date": "2026-09-19",
+    "status": "live",
+    "title": "Drop a pin on the map to get an address",
+    "summary": "Pickup and drop points can be chosen by placing a pin; the address is looked up from the pin.",
+    "see": "Post a Load → address picker → map pin.",
+    "areas": [
+      "Shipper"
+    ]
+  },
+  {
+    "id": "legacy-pr-153",
+    "pr": null,
+    "date": "2026-09-19",
+    "status": "live",
+    "title": "Five-area hardening: analytics trust, geocoding, fleet staff roles, invoice QR scan, KYC seam",
+    "summary": "Analytics figures only count trips with reliable data; addresses are geocoded consistently; a fleet owner can delegate roles to staff (dispatch, bids, documents, assets, analytics) without sharing bank details; freight invoices carry a scannable QR; identity checks sit behind a provider seam.",
+    "see": "Fleet owners: delegated staff access. Invoices: QR code. Cleaner analytics.",
+    "areas": [
+      "Fleet owner",
+      "Platform"
+    ]
+  }
+]
