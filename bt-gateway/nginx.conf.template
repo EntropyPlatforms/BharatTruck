@@ -63,6 +63,10 @@ http {
   map $http_origin $cors_origin {
     default                                              "";
     "~^https://bt-(shipper|driver|ops-web|fleet-console|app)-[^/]+\.run\.app$" $http_origin;
+    # The public domain (2026-10-19): www.bharattruck.net is served by a Cloudflare Worker that
+    # forwards to bt-app (cloudflare/www-proxy). The bare domain only redirects to www, but is
+    # listed so a page that ever loads there is not CORS-blocked. Exact hosts, not a wildcard.
+    "~^https://(www\.)?bharattruck\.net$"                  $http_origin;
   }
 
   limit_req_zone $binary_remote_addr zone=otp_zone:10m rate=5r/m;
