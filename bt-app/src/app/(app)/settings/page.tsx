@@ -37,6 +37,7 @@ import GstPortalCheck from '@/components/gst-portal-check'
 import GstOtpVerify from '@/components/gst-otp-verify'
 import { EwayPortalCredentialsCard } from '@/components/eway-nic'
 import PanCard from '@/components/pan-card'
+import BahiLinkCard from '@/components/bahi-link'
 import { getKycConfig } from '@/lib/api'
 import { dateTime, inr } from '@/lib/format'
 import { readTheme, saveTheme, type ThemeChoice } from '@/lib/theme'
@@ -72,6 +73,7 @@ const SECTIONS: { id: string; label: string; icon: ReactNode; fleetOnly?: boolea
   { id: 'pan', label: 'PAN (required)', icon: <Receipt /> },
   { id: 'gstin', label: 'Your GSTIN', icon: <Receipt /> },
   { id: 'eway', label: 'E-way bill portal', icon: <Receipt /> },
+  { id: 'bahi', label: 'Bahi Khata', icon: <Wallet /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette /> },
   { id: 'company', label: 'Company profile', icon: <Building2 />, fleetOnly: true },
   { id: 'overhead', label: 'Monthly overhead', icon: <Wallet />, fleetOnly: true },
@@ -215,6 +217,7 @@ export default function SettingsPage() {
               <section id="pan" className="scroll-mt-6"><PanCard scan={scan} providerWired={providerWired} /></section>
               <section id="gstin" className="scroll-mt-6"><ShipperGstinCard scan={scan} gstLookup={gstLookup} gstOtp={gstOtp} /></section>
               <section id="eway" className="scroll-mt-6"><EwayPortalCredentialsCard /></section>
+              <section id="bahi" className="scroll-mt-6"><BahiLinkCard /></section>
               {fleetReady && owner && (
                 <section id="overhead" className="scroll-mt-6"><OverheadCard owner={owner} onSaved={setOwner} /></section>
               )}

@@ -1853,3 +1853,27 @@ export type OnboardingStatus = {
   verification_badge: VerificationBadge
   checklist: OnboardingChecklist
 }
+
+/** GET /bookings/bahi/connection — the account's Bahi Khata link (the token itself is never returned). */
+export type BahiConnectionView = {
+  linked: boolean
+  /** The Bahi login it was linked with. */
+  email: string | null
+  company_name: string | null
+  gstin: string | null
+  gst_rate: number
+  linked_at: string | null
+  available: boolean
+}
+
+/** One paid load posted (or not) into the account's Bahi books. */
+export type BahiPostingView = {
+  booking_id: string
+  kind: 'income' | 'expense'
+  status: 'posted' | 'awaiting_approval' | 'draft' | 'failed'
+  bahi_number: string | null
+  amount_inr: number | null
+  note: string | null
+  error: string | null
+  updated_at: string
+}
