@@ -1448,3 +1448,26 @@ export type BankAccountInput = {
 export function linkBankAccount(body: BankAccountInput) {
   return request<{ bank_account: BankAccount }>('/onboarding/bank-account', { method: 'POST', body: JSON.stringify(body) })
 }
+
+// ── Bahi Khata link (bt-booking-service lib/bahi) ──────────────────────────
+// Paid loads are posted into the account's Bahi books automatically once linked.
+import type { BahiConnectionView, BahiPostingView } from './types'
+
+export function getBahiConnection() {
+  return request<BahiConnectionView>('/bookings/bahi/connection')
+}
+export function linkBahi(token: string, gstRate: number) {
+  return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'PUT', body: JSON.stringify({ token, gst_rate: gstRate }) })
+}
+export function updateBahiSettings(gstRate: number) {
+  return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'PATCH', body: JSON.stringify({ gst_rate: gstRate }) })
+}
+export function unlinkBahi() {
+  return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'DELETE' })
+}
+export function getBahiPostings() {
+  return request<BahiPostingView[]>('/bookings/bahi/postings')
+}
+export function syncBahi(bookingId: string) {
+  return request<BahiPostingView[]>(`/bookings/${bookingId}/bahi/sync`, { method: 'POST' })
+}

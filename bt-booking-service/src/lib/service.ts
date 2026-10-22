@@ -32,6 +32,7 @@ import { resolveConsigneeParty } from './consignee/repository.js'
 import { attachConsignee, attachConsignees, type WithConsignee } from './consignee/service.js'
 import { assertPickupDocumentsReady } from './documents/service.js'
 import { emitAssignmentRelease } from './fleet-emit.js'
+import * as bahi from './bahi/service.js'
 
 // -----------------------------------------------------------
 // The per-object VIEWER block (D-27/D-38) — what the unified frontend reads to
@@ -1164,6 +1165,8 @@ export async function markBookingPaid(
     log,
   )
   await notify.emitPayoutRecorded(updated, { amount, status: detail?.payoutStatus ?? null }, log)
+  // Freight into each side's Bahi Khata books, for accounts that linked Bahi. Never throws.
+  await bahi.onBookingPaid(updated, { amount, method: detail?.method ?? null, paymentId: detail?.paymentId ?? null }, log)
 
   return updated
 }

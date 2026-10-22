@@ -12,6 +12,7 @@ import { locationRoutes } from './routes/location.js'
 import { internalRoutes } from './routes/internal.js'
 import { opsRoutes } from './routes/ops.js'
 import { documentRoutes } from './routes/documents.js'
+import { bahiRoutes } from './routes/bahi.js'
 import { notificationRoutes } from './routes/notifications.js'
 import { startDispatchLoop } from './lib/notifications/dispatcher.js'
 import { mailer, smtpConfigured } from './lib/notifications/mailer.js'
@@ -49,6 +50,7 @@ async function bootstrap() {
     // Freight documents (migration 0024) share the /bookings prefix so the edge
     // needs no new route: bt-gateway already forwards /bookings here.
     await authedApp.register(documentRoutes, { prefix: '/bookings' })
+    await authedApp.register(bahiRoutes, { prefix: '/bookings' })
     await authedApp.register(locationRoutes, { prefix: '/location' })
     // The unified home feed (D-38). Its own /me prefix — it is a per-CALLER
     // surface, not a per-booking one — reached through the gateway's /api/me/*.
