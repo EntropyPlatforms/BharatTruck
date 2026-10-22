@@ -22,6 +22,7 @@ import { enqueueNotification } from '@bharattruck/shared/notifications'
 import { getMilestones } from '../milestones.js'
 import { istDate } from '../ist.js'
 import { recipientByUserId } from '../notifications/recipients.js'
+import { queueAlertMessage } from '../whatsapp/service.js'
 import { driverNamesByIds } from '../feed/repository.js'
 import * as repo from './repository.js'
 import {
@@ -173,5 +174,13 @@ export async function runAlertSweep(cadence: SweepCadence, now: Date, log?: Logg
     }
   }
 
-  return { cadence, evaluated_kinds: evaluated, failed_kinds: failed, opened, refreshed, escalated, resolved, emailed }
+  // ...and on WhatsApp, to people who have opted in there. A separate pass so a person with
+  // no email still gets it. queueAlertMessage never throws and skips quietly when WhatsApp
+  // is not configured, the person has no WhatsApp contact, or they sent STOP.
+  let whatsappQueued = 0
+  for (const { draft, episode } of toEmail) {
+    if ((await queueAlertMessage(draft, episode, log)) === 'queued') whatsappQueued++
+  }
+
+  return { cadence, evaluated_kinds: evaluated, failed_kinds: failed, opened, refreshed, escalated, resolved, emailed, whatsapp_queued: whatsappQueued }
 }
