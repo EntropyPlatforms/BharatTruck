@@ -1,170 +1,133 @@
 // -----------------------------------------------------------
-// bahi/service — link an account to its Bahi Khata books, and post each paid load there.
+// bahi/service — post each paid load into the Bahi Khata books of whoever linked Bahi, using
+// ONLY Bahi's existing API (no Bahi change, no database migration here — see store.ts).
 //
-//   connect     paste a Bahi integration token → pinged, then stored encrypted
-//   onPaid      called from markBookingPaid: carrier gets freight income, shipper a freight
-//               expense, each ONLY if that account has linked Bahi. Never throws — a payment
-//               must not fail because someone's accounting books were unreachable.
-//   retry       the account re-posts its own side of one load (Bahi dedupes on the booking id)
-//
-// Both tables arrive with migration 0043. Until it is applied every read answers "not
-// linked" and onPaid does nothing, so this code can deploy ahead of the migration.
+//   connect       Bahi login once (owner/manager). The password is used for that one call and
+//                 dropped; only Bahi's rotating refresh token is kept, sealed.
+//   onBookingPaid called from markBookingPaid; never throws.
+//                   shipper  → purchase invoice from the carrier → submitted → paid   (posted)
+//                   carrier  → sales invoice to the shipper → Bahi emails the shipper an
+//                              approval link (Bahi requires it for every sales invoice) →
+//                              once approved: submitted → paid                     (posted)
+//   syncPending   finishes approvals that have landed, retries failures
 // -----------------------------------------------------------
 
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { supabase } from '../supabase.js'
 import { BookingError, type BookingErrorCode } from '../types.js'
-import { BahiError, pingBahi, postFreightToBahi } from './client.js'
+import { bahi, BahiError, type BahiPartyRow } from './client.js'
 import { buildFreightBody, type BahiParty } from './posting.js'
+import * as store from './store.js'
 
 type Log = { info?: (o: unknown, m: string) => void; warn: (o: unknown, m: string) => void }
 
 const GST_RATES = [0, 5, 12, 18, 28] as const
+const gstRate = z.number().refine((n) => (GST_RATES as readonly number[]).includes(n), 'GST rate must be 0, 5, 12, 18 or 28')
+const FREIGHT_ITEM = { name: 'Freight charges', hsn_sac: '996511' }
+const PRIVILEGED = new Set(['ADMIN', 'MANAGER'])
+const KEEPALIVE_MS = 15 * 24 * 3600_000 // Bahi refresh tokens live 30 days from their last use
 
 export const ConnectBodySchema = z.object({
-  token: z.string().trim().regex(/^bahi_it_[A-Za-z0-9_-]{32,100}$/, 'Paste the Bahi integration token (it starts with bahi_it_)'),
-  gst_rate: z.number().refine((n) => (GST_RATES as readonly number[]).includes(n), 'GST rate must be 0, 5, 12, 18 or 28').default(0),
+  email: z.string().trim().toLowerCase().email('Enter the email you sign in to Bahi with'),
+  password: z.string().min(1, 'Enter your Bahi password').max(128),
+  gst_rate: gstRate.optional(),
 })
-export const SettingsBodySchema = z.object({
-  gst_rate: z.number().refine((n) => (GST_RATES as readonly number[]).includes(n), 'GST rate must be 0, 5, 12, 18 or 28'),
-})
+export const SettingsBodySchema = z.object({ gst_rate: gstRate })
 
 export type BahiConnectionView = {
   linked: boolean
+  email: string | null
   company_name: string | null
   gstin: string | null
   gst_rate: number
   linked_at: string | null
-  /** False when this deployment cannot store a token (no key) — the card says so instead of failing on save. */
   available: boolean
 }
+export type BahiPostingView = Pick<store.PostRecord, 'booking_id' | 'kind' | 'status' | 'bahi_number' | 'amount_inr' | 'note' | 'error' | 'updated_at'>
 
-export type BahiPostingView = {
-  booking_id: string
-  kind: 'income' | 'expense'
-  status: 'posted' | 'draft' | 'failed'
-  bahi_number: string | null
-  bahi_status: string | null
-  amount_inr: number | null
-  note: string | null
-  error: string | null
-  updated_at: string
-}
+const nowIso = () => new Date().toISOString()
+const toView = (p: store.PostRecord): BahiPostingView => ({
+  booking_id: p.booking_id, kind: p.kind, status: p.status, bahi_number: p.bahi_number,
+  amount_inr: p.amount_inr, note: p.note, error: p.error, updated_at: p.updated_at,
+})
+const linkError = (msg: string, status = 400) => new BookingError(msg, 'BAHI_LINK' as BookingErrorCode, status)
 
-// ── token encryption ──────────────────────────────────────────────────────
+// ── link ──────────────────────────────────────────────────────────────────
 
-function keyHex(): string {
-  return (process.env.BAHI_CREDENTIALS_KEY ?? process.env.EWB_CREDENTIALS_KEY ?? '').trim()
-}
-export const bahiStorageConfigured = () => /^[0-9a-fA-F]{64}$/.test(keyHex())
-
-function key(): Buffer {
-  if (!bahiStorageConfigured()) {
-    throw new BookingError('Bahi linking is not switched on: BAHI_CREDENTIALS_KEY (32-byte hex) is not set', 'NOT_CONFIGURED' as BookingErrorCode, 503)
-  }
-  return Buffer.from(keyHex(), 'hex')
-}
-
-export function sealToken(plain: string): string {
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', key(), iv)
-  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
-  return `${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${enc.toString('base64')}`
-}
-
-export function openToken(stored: string): string {
-  const [iv, tag, enc] = stored.split(':')
-  if (!iv || !tag || !enc) throw new BookingError('The stored Bahi token is unreadable — link Bahi again in Settings', 'INTERNAL', 500)
-  const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv, 'base64'))
-  decipher.setAuthTag(Buffer.from(tag, 'base64'))
-  return Buffer.concat([decipher.update(Buffer.from(enc, 'base64')), decipher.final()]).toString('utf8')
-}
-
-// ── storage ───────────────────────────────────────────────────────────────
-
-const missingTable = (error: { code?: string } | null) => error?.code === '42P01' || error?.code === 'PGRST205'
-
-type ConnectionRow = { user_id: string; token_enc: string; company_name: string | null; gstin: string | null; gst_rate: number | string; created_at: string }
-
-async function connectionRow(userId: string): Promise<ConnectionRow | null> {
-  const { data, error } = await supabase.from('bahi_connections').select('user_id, token_enc, company_name, gstin, gst_rate, created_at').eq('user_id', userId).maybeSingle()
-  if (error) {
-    if (missingTable(error)) return null
-    throw new Error(`bahi_connections read failed: ${error.message}`)
-  }
-  return (data as ConnectionRow | null) ?? null
-}
-
-export async function connectionView(userId: string): Promise<BahiConnectionView> {
-  const row = await connectionRow(userId)
-  return {
-    linked: !!row,
-    company_name: row?.company_name ?? null,
-    gstin: row?.gstin ?? null,
-    gst_rate: row ? Number(row.gst_rate) : 0,
-    linked_at: row?.created_at ?? null,
-    available: bahiStorageConfigured(),
-  }
-}
-
-export async function connect(userId: string, body: { token: string; gst_rate?: number }): Promise<BahiConnectionView> {
-  let ping
+export async function connect(userId: string, body: { email: string; password: string; gst_rate?: number }): Promise<BahiConnectionView> {
+  if (!store.bahiStorageConfigured()) store.seal('') // throws the NOT_CONFIGURED explanation
+  let tokens
   try {
-    ping = await pingBahi(body.token)
+    tokens = await bahi.login(body.email, body.password)
   } catch (err) {
-    if (err instanceof BahiError) throw err.toBookingError()
+    if (err instanceof BahiError) throw linkError(err.httpStatus === 401 ? 'Bahi did not accept that email and password.' : err.message, err.httpStatus === 401 ? 400 : 502)
     throw err
   }
-  const { error } = await supabase.from('bahi_connections').upsert({
-    user_id: userId,
-    token_enc: sealToken(body.token),
-    company_name: ping.company_name,
-    gstin: ping.gstin,
-    gst_rate: body.gst_rate ?? 0,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' })
-  if (error) {
-    if (missingTable(error)) throw new BookingError('Bahi linking is not available yet (migration 0043 not applied)', 'NOT_CONFIGURED' as BookingErrorCode, 503)
-    throw new Error(`bahi_connections write failed: ${error.message}`)
+  if (!tokens.refresh_token) throw linkError('This Bahi deployment does not issue refresh tokens, so BharatTruck cannot stay linked.', 502)
+  if (!PRIVILEGED.has(String(tokens.user?.role ?? '').toUpperCase())) {
+    throw linkError('Link Bahi with an owner or manager login — Bahi only lets those record payments.')
   }
+  const company = await bahi.company(tokens.access_token).catch(() => ({ name: null, gstin: null }))
+  const at = nowIso()
+  await store.putConn(userId, {
+    refresh_sealed: store.seal(tokens.refresh_token),
+    email: body.email,
+    company_name: company.name,
+    gstin: company.gstin,
+    gst_rate: body.gst_rate ?? 0,
+    linked_at: at,
+    refreshed_at: at,
+  })
   return connectionView(userId)
 }
 
-export async function updateSettings(userId: string, body: z.infer<typeof SettingsBodySchema>): Promise<BahiConnectionView> {
-  const { data, error } = await supabase.from('bahi_connections').update({ gst_rate: body.gst_rate, updated_at: new Date().toISOString() }).eq('user_id', userId).select('user_id')
-  if (error) throw new Error(`bahi_connections update failed: ${error.message}`)
-  if (!data?.length) throw new BookingError('Bahi is not linked on this account', 'NOT_FOUND', 404)
+/** A fresh access token; rotates and re-seals the refresh token. Caller must hold the lock. */
+async function accessToken(userId: string): Promise<string> {
+  const conn = await store.getConn(userId)
+  if (!conn) throw linkError('Bahi is not linked on this account', 404)
+  try {
+    const t = await bahi.refresh(store.unseal(conn.refresh_sealed))
+    await store.putConn(userId, { ...conn, refresh_sealed: store.seal(t.refresh_token), refreshed_at: nowIso() })
+    return t.access_token
+  } catch (err) {
+    if (err instanceof BahiError && (err.httpStatus === 401 || err.httpStatus === 403)) {
+      throw linkError('The Bahi link has expired (unused for 30 days, or signed out). Link Bahi again in Settings.', 409)
+    }
+    throw err
+  }
+}
+
+export async function connectionView(userId: string): Promise<BahiConnectionView> {
+  let conn = await store.getConn(userId).catch(() => null)
+  // Keep the link alive: Bahi's refresh token lapses 30 days after its last use.
+  if (conn && Date.now() - Date.parse(conn.refreshed_at) > KEEPALIVE_MS) {
+    await store.withLock(userId, () => accessToken(userId)).catch(() => null)
+    conn = await store.getConn(userId).catch(() => conn)
+  }
+  return {
+    linked: !!conn,
+    email: conn?.email ?? null,
+    company_name: conn?.company_name ?? null,
+    gstin: conn?.gstin ?? null,
+    gst_rate: conn?.gst_rate ?? 0,
+    linked_at: conn?.linked_at ?? null,
+    available: store.bahiStorageConfigured(),
+  }
+}
+
+export async function updateSettings(userId: string, body: { gst_rate: number }): Promise<BahiConnectionView> {
+  const conn = await store.getConn(userId)
+  if (!conn) throw linkError('Bahi is not linked on this account', 404)
+  await store.putConn(userId, { ...conn, gst_rate: body.gst_rate })
   return connectionView(userId)
 }
 
 export async function disconnect(userId: string): Promise<void> {
-  const { error } = await supabase.from('bahi_connections').delete().eq('user_id', userId)
-  if (error && !missingTable(error)) throw new Error(`bahi_connections delete failed: ${error.message}`)
+  await store.delConn(userId)
 }
 
-export async function recentPostings(userId: string, limit = 20): Promise<BahiPostingView[]> {
-  const { data, error } = await supabase.from('bahi_postings')
-    .select('booking_id, kind, status, bahi_number, bahi_status, amount_inr, note, error, updated_at')
-    .eq('user_id', userId).order('updated_at', { ascending: false }).limit(limit)
-  if (error) {
-    if (missingTable(error)) return []
-    throw new Error(`bahi_postings read failed: ${error.message}`)
-  }
-  return ((data ?? []) as BahiPostingView[]).map((p) => ({ ...p, amount_inr: p.amount_inr == null ? null : Number(p.amount_inr) }))
-}
-
-async function recordPosting(row: {
-  booking_id: string; user_id: string; kind: 'income' | 'expense'; status: 'posted' | 'draft' | 'failed'
-  bahi_txn_id?: string | null; bahi_number?: string | null; bahi_status?: string | null; amount_inr?: number | null; note?: string | null; error?: string | null
-}) {
-  const { data: prior } = await supabase.from('bahi_postings').select('attempts').eq('booking_id', row.booking_id).eq('user_id', row.user_id).eq('kind', row.kind).maybeSingle()
-  const { error } = await supabase.from('bahi_postings').upsert({
-    ...row,
-    attempts: ((prior as { attempts?: number } | null)?.attempts ?? 0) + 1,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'booking_id,user_id,kind' })
-  if (error && !missingTable(error)) throw new Error(`bahi_postings write failed: ${error.message}`)
+export async function recentPostings(userId: string): Promise<BahiPostingView[]> {
+  return (await store.recentPosts(userId).catch(() => [])).map(toView)
 }
 
 // ── who is on the load ────────────────────────────────────────────────────
@@ -181,8 +144,13 @@ async function userParty(userId: string | null | undefined, nameOverride?: strin
   if (error) throw new Error(`users select failed: ${error.message}`)
   const u = data as { id: string; full_name: string | null; email: string | null; phone_number: string | null; gstin: string | null } | null
   if (!u) return null
-  const name = (nameOverride || u.full_name || u.email || 'BharatTruck user').trim()
-  return { userId: u.id, name, gstin: (gstinOverride || u.gstin || null)?.toUpperCase() ?? null, email: u.email, phone: u.phone_number }
+  return {
+    userId: u.id,
+    name: (nameOverride || u.full_name || u.email || 'BharatTruck user').trim(),
+    gstin: (gstinOverride || u.gstin || null)?.toUpperCase() ?? null,
+    email: u.email,
+    phone: u.phone_number,
+  }
 }
 
 export async function bookingParties(b: BookingLike): Promise<{ shipper: BahiParty | null; carrier: BahiParty | null }> {
@@ -199,32 +167,117 @@ export async function bookingParties(b: BookingLike): Promise<{ shipper: BahiPar
   return { shipper, carrier }
 }
 
-// ── posting ───────────────────────────────────────────────────────────────
+// ── posting through Bahi's API ────────────────────────────────────────────
 
-export type PaidDetail = { amount?: number | null; method?: string | null; paymentId?: string | null }
-
-async function postSide(b: BookingLike, kind: 'income' | 'expense', self: BahiParty, other: BahiParty, detail: PaidDetail): Promise<BahiPostingView['status'] | 'skipped'> {
-  const conn = await connectionRow(self.userId)
-  if (!conn) return 'skipped'
-  const paid = Number(detail.amount ?? b.final_price ?? b.quoted_price ?? 0)
-  if (!(paid > 0)) return 'skipped'
-  const body = buildFreightBody({
-    kind, bookingId: b.id, source: b.source_address ?? null, destination: b.destination_address ?? null,
-    weightKg: b.weight_kg ?? null, counterparty: other, paid, gstRate: Number(conn.gst_rate), method: detail.method ?? null, paymentId: detail.paymentId ?? null,
+async function ensureParty(t: string, p: BahiParty, role: 'CUSTOMER' | 'SUPPLIER'): Promise<string> {
+  const all = await bahi.parties(t)
+  const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase()
+  const hit: BahiPartyRow | undefined =
+    (p.gstin ? all.find((x) => (x.gstin ?? '').toUpperCase() === p.gstin) : undefined) ??
+    all.find((x) => norm(x.legal_name) === norm(p.name) && (!x.gstin || !p.gstin) && norm(x.email) === norm(p.email))
+  if (hit) return hit.id
+  const created = await bahi.createParty(t, {
+    legal_name: p.name, gstin: p.gstin, email: p.email, phone: p.phone,
+    party_type: p.gstin ? 'ORGANIZATION' : 'INDIVIDUAL', role_type: role,
   })
-  try {
-    const res = await postFreightToBahi(openToken(conn.token_enc), body)
-    const status = res.status === 'DRAFT' ? 'draft' : 'posted'
-    await recordPosting({ booking_id: b.id, user_id: self.userId, kind, status, bahi_txn_id: res.txn_id, bahi_number: res.number, bahi_status: res.status, amount_inr: res.grand_total, note: res.note ?? null, error: null })
-    return status
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    await recordPosting({ booking_id: b.id, user_id: self.userId, kind, status: 'failed', amount_inr: paid, error: message.slice(0, 300) })
-    return 'failed'
-  }
+  return created.id
 }
 
-/** Post a just-paid load to whichever side has linked Bahi. Never throws. */
+async function ensureFreightItem(t: string, rate: number): Promise<string> {
+  const hit = (await bahi.items(t)).find((i) => i.name === FREIGHT_ITEM.name && i.hsn_sac === FREIGHT_ITEM.hsn_sac && Number(i.is_stock_item) === 0)
+  if (hit) return hit.id
+  return (await bahi.createItem(t, { name: FREIGHT_ITEM.name, hsn_sac: FREIGHT_ITEM.hsn_sac, stock_uom: 'TRIP', gst_rate: rate, is_stock_item: false })).id
+}
+
+const requestId = (rec: Pick<store.PostRecord, 'kind' | 'booking_id'>) => `BT-${rec.kind}-${rec.booking_id}`
+
+async function submitAndPay(t: string, rec: store.PostRecord): Promise<store.PostRecord> {
+  try {
+    await bahi.submit(t, rec.bahi_txn_id!)
+  } catch (err) {
+    // A resumed post may already be submitted; Bahi says so, and the payment below decides.
+    if (!(err instanceof BahiError && /already submitted/i.test(err.message))) throw err
+  }
+  if (rec.pay) {
+    await bahi.pay(t, {
+      invoice_id: rec.bahi_txn_id!, amount: rec.pay.amount, payment_type: rec.kind === 'income' ? 'RECEIVE' : 'PAY',
+      mode: rec.pay.mode, request_id: requestId(rec), payment_date: rec.pay.date, reference: rec.pay.reference,
+      note: `BharatTruck load ${rec.booking_id}`,
+    })
+  }
+  return { ...rec, status: 'posted', note: null, error: null }
+}
+
+/** Move one record forward as far as Bahi allows right now. Caller holds the lock. */
+async function advance(t: string, rec: store.PostRecord): Promise<store.PostRecord> {
+  if (rec.status === 'posted' || !rec.bahi_txn_id) return rec
+  if (rec.kind === 'expense') return submitAndPay(t, rec)
+  const approval = await bahi.approval(t, rec.bahi_txn_id)
+  if (approval?.status === 'APPROVED') return submitAndPay(t, rec)
+  if (approval?.status === 'PENDING') return { ...rec, status: 'awaiting_approval', error: null }
+  if (approval && ['REJECTED', 'EXPIRED', 'REVOKED'].includes(approval.status)) {
+    return { ...rec, status: 'draft', error: null, note: `The shipper's approval is ${approval.status.toLowerCase()} — resend it from the invoice in Bahi.` }
+  }
+  // No approval request yet (e.g. the send failed last time): send it now.
+  if (!rec.approval_email) return { ...rec, status: 'draft', note: 'The shipper has no email, so Bahi cannot ask them to approve. Submit it in Bahi yourself.' }
+  try {
+    await bahi.sendApproval(t, rec.bahi_txn_id, rec.approval_email)
+  } catch (err) {
+    // 502 = the request was created but Bahi's email failed; it can be resent from Bahi.
+    if (!(err instanceof BahiError && err.httpStatus === 502)) throw err
+    return { ...rec, status: 'awaiting_approval', note: `Approval created but Bahi could not email ${rec.approval_email} — resend it from Bahi.` }
+  }
+  return { ...rec, status: 'awaiting_approval', error: null, note: `Approval emailed to ${rec.approval_email}; it posts with its payment once they approve.` }
+}
+
+export type PaidDetail = { amount?: number | null; method?: string | null; paymentId?: string | null }
+type SideResult = store.PostStatus | 'skipped' | 'busy'
+
+async function postSide(b: BookingLike, kind: 'income' | 'expense', self: BahiParty, other: BahiParty, detail: PaidDetail): Promise<SideResult> {
+  const conn = await store.getConn(self.userId)
+  if (!conn) return 'skipped'
+  const existing = await store.getPost(b.id, kind)
+  if (existing?.status === 'posted') return 'posted'
+  const paid = Number(detail.amount ?? b.final_price ?? b.quoted_price ?? 0)
+  if (!(paid > 0)) return 'skipped'
+
+  const outcome = await store.withLock(self.userId, async (): Promise<SideResult> => {
+    let rec: store.PostRecord = existing ?? {
+      booking_id: b.id, user_id: self.userId, kind, status: 'failed', bahi_txn_id: null, bahi_number: null,
+      amount_inr: null, pay: null, approval_email: kind === 'income' ? other.email : null, note: null, error: null, attempts: 0, updated_at: nowIso(),
+    }
+    rec = { ...rec, attempts: rec.attempts + 1 }
+    try {
+      const t = await accessToken(self.userId)
+      if (!rec.bahi_txn_id) {
+        const body = buildFreightBody({
+          kind, bookingId: b.id, source: b.source_address ?? null, destination: b.destination_address ?? null,
+          weightKg: b.weight_kg ?? null, counterparty: other, paid, gstRate: conn.gst_rate, method: detail.method ?? null, paymentId: detail.paymentId ?? null,
+        })
+        const partyId = await ensureParty(t, other, kind === 'income' ? 'CUSTOMER' : 'SUPPLIER')
+        const itemId = await ensureFreightItem(t, conn.gst_rate)
+        const txn = await bahi.createTransaction(t, {
+          txn_type: kind === 'income' ? 'SINV' : 'PI', party_id: partyId, date: body.date,
+          items: [{ item_id: itemId, qty: 1, rate: body.amount, gst_rate: body.gst_rate }],
+        })
+        const full = await bahi.transaction(t, txn.id).catch(() => ({} as Record<string, unknown>))
+        rec = {
+          ...rec, bahi_txn_id: txn.id, bahi_number: (full.naming_series as string) ?? null, amount_inr: Number(txn.grand_total),
+          pay: { amount: Number(txn.grand_total), date: body.payment.date, reference: body.payment.reference, mode: body.payment.mode }, status: 'draft',
+        }
+        await store.putPost({ ...rec, updated_at: nowIso() }) // the draft exists in Bahi now: never create it twice
+      }
+      rec = await advance(t, rec)
+    } catch (err) {
+      rec = { ...rec, status: 'failed', error: (err instanceof Error ? err.message : String(err)).slice(0, 300) }
+    }
+    await store.putPost({ ...rec, updated_at: nowIso() })
+    return rec.status
+  })
+  return outcome ?? 'busy'
+}
+
+/** Post a just-paid load to whichever side linked Bahi. Never throws. */
 export async function onBookingPaid(b: BookingLike, detail: PaidDetail, log?: Log): Promise<void> {
   try {
     const { shipper, carrier } = await bookingParties(b)
@@ -239,18 +292,39 @@ export async function onBookingPaid(b: BookingLike, detail: PaidDetail, log?: Lo
   }
 }
 
-/** The caller re-posts THEIR side of one load. */
+/** Finish approvals that have landed and retry failures, for one account. */
+export async function syncPending(userId: string): Promise<BahiPostingView[]> {
+  if (!(await store.getConn(userId))) throw linkError('Bahi is not linked on this account', 404)
+  const open = (await store.recentPosts(userId, 50)).filter((p) => p.status === 'awaiting_approval' || (p.status === 'failed' && p.bahi_txn_id))
+  if (open.length) {
+    const done = await store.withLock(userId, async () => {
+      const t = await accessToken(userId)
+      for (const p of open) {
+        let rec: store.PostRecord
+        try { rec = await advance(t, { ...p, attempts: p.attempts + 1 }) } catch (err) { rec = { ...p, attempts: p.attempts + 1, status: 'failed', error: (err as Error).message.slice(0, 300) } }
+        await store.putPost({ ...rec, updated_at: nowIso() })
+      }
+      return true
+    })
+    if (done === null) throw linkError('Bahi is busy with another post for this account — try again in a moment.', 409)
+  }
+  return recentPostings(userId)
+}
+
+/** The caller re-posts THEIR side of one paid load. */
 export async function retryForUser(b: BookingLike & { status: string }, userId: string): Promise<BahiPostingView[]> {
   if (b.status !== 'paid') throw new BookingError('Only a paid load can be posted to Bahi', 'INVALID_TRANSITION', 409)
   const { shipper, carrier } = await bookingParties(b)
   if (!shipper || !carrier) throw new BookingError('This load has no carrier yet', 'INVALID_TRANSITION', 409)
   const detail: PaidDetail = {}
-  // The recorded settlement, when there is one, so a retry posts the same amount and reference.
   const { data: pay } = await supabase.from('payments').select('amount, payment_method, gateway_txn_id').eq('booking_id', b.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
   const p = pay as { amount?: number | string; payment_method?: string | null; gateway_txn_id?: string | null } | null
   if (p?.amount != null) { detail.amount = Number(p.amount); detail.method = p.payment_method ?? null; detail.paymentId = p.gateway_txn_id ?? null }
-  if (userId === carrier.userId) await postSide(b, 'income', carrier, shipper, detail)
-  else if (userId === shipper.userId) await postSide(b, 'expense', shipper, carrier, detail)
+  let r: SideResult
+  if (userId === carrier.userId) r = await postSide(b, 'income', carrier, shipper, detail)
+  else if (userId === shipper.userId) r = await postSide(b, 'expense', shipper, carrier, detail)
   else throw new BookingError('You are not a party to this load', 'FORBIDDEN', 403)
-  return (await recentPostings(userId, 50)).filter((x) => x.booking_id === b.id)
+  if (r === 'skipped') throw linkError('Link Bahi in Settings first', 409)
+  if (r === 'busy') throw linkError('Bahi is busy with another post for this account — try again in a moment.', 409)
+  return (await recentPostings(userId)).filter((x) => x.booking_id === b.id)
 }

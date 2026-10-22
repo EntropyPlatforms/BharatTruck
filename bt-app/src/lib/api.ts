@@ -1456,8 +1456,11 @@ import type { BahiConnectionView, BahiPostingView } from './types'
 export function getBahiConnection() {
   return request<BahiConnectionView>('/bookings/bahi/connection')
 }
-export function linkBahi(token: string, gstRate: number) {
-  return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'PUT', body: JSON.stringify({ token, gst_rate: gstRate }) })
+export function linkBahi(email: string, password: string, gstRate: number) {
+  return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'PUT', body: JSON.stringify({ email, password, gst_rate: gstRate }) })
+}
+export function syncBahiPending() {
+  return request<BahiPostingView[]>('/bookings/bahi/sync', { method: 'POST' })
 }
 export function updateBahiSettings(gstRate: number) {
   return request<BahiConnectionView>('/bookings/bahi/connection', { method: 'PATCH', body: JSON.stringify({ gst_rate: gstRate }) })

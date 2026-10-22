@@ -6,9 +6,10 @@ import * as bahi from '../lib/bahi/service.js'
 
 // Bahi Khata link (registered under /bookings → gateway /api/bookings/bahi/…):
 //   GET    /bahi/connection        is this account linked, to which Bahi company, GST rate
-//   PUT    /bahi/connection        { token, gst_rate } — pinged, then stored encrypted
+//   PUT    /bahi/connection        { email, password, gst_rate } — Bahi login once; only its refresh token is kept, sealed
 //   PATCH  /bahi/connection        { gst_rate }
-//   DELETE /bahi/connection        unlink (the token stays valid in Bahi until revoked there)
+//   DELETE /bahi/connection        unlink
+//   POST   /bahi/sync              finish approved invoices, retry failures
 //   GET    /bahi/postings          this account's recent postings
 //   POST   /:id/bahi/sync          re-post this account's side of one paid load
 
@@ -50,6 +51,11 @@ export async function bahiRoutes(app: FastifyInstance) {
 
   app.delete('/bahi/connection', async (req, reply) => {
     try { await bahi.disconnect(req.user.userId); return reply.send({ success: true, data: await bahi.connectionView(req.user.userId) }) }
+    catch (err) { return handleError(reply, err) }
+  })
+
+  app.post('/bahi/sync', async (req, reply) => {
+    try { return reply.send({ success: true, data: await bahi.syncPending(req.user.userId) }) }
     catch (err) { return handleError(reply, err) }
   })
 

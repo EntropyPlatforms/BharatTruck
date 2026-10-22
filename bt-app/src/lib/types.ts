@@ -1857,6 +1857,8 @@ export type OnboardingStatus = {
 /** GET /bookings/bahi/connection — the account's Bahi Khata link (the token itself is never returned). */
 export type BahiConnectionView = {
   linked: boolean
+  /** The Bahi login it was linked with. */
+  email: string | null
   company_name: string | null
   gstin: string | null
   gst_rate: number
@@ -1868,9 +1870,8 @@ export type BahiConnectionView = {
 export type BahiPostingView = {
   booking_id: string
   kind: 'income' | 'expense'
-  status: 'posted' | 'draft' | 'failed'
+  status: 'posted' | 'awaiting_approval' | 'draft' | 'failed'
   bahi_number: string | null
-  bahi_status: string | null
   amount_inr: number | null
   note: string | null
   error: string | null
