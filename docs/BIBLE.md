@@ -2401,6 +2401,38 @@ applied the sweep answers **503 `ALERTS_NOT_MIGRATED`** and writes nothing, and 
 `/me/summary` show no alerts rather than erroring — so the jobs can be created before or after the
 migration, but alerts appear only once both exist.
 
+**WhatsApp bot (optional — off until configured).** `bt-booking-service` answers WhatsApp messages
+and sends critical alerts there (migration 0043, `src/lib/whatsapp`). Anyone can message the
+business number first; a number matching an account's saved phone gets a menu (my alerts, my
+trips, help), any other number a welcome. It never asks for documents and refuses photos. To
+switch it on:
+
+1. In Meta's WhatsApp Cloud API (needs Meta business verification of the registered company): a
+   business number, a permanent access token, and the app secret.
+2. Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+   `WHATSAPP_VERIFY_TOKEN` on `bt-booking-service` (all four, or it stays off; `SUPPORT_EMAIL`
+   optional). Links in replies use `SHIPPER_APP_BASE_URL`, which must point at bt-app.
+3. In Meta, set the webhook to `https://<gateway>/api/whatsapp/webhook` with the same verify token,
+   and subscribe to the `messages` field.
+4. For alerts outside the 24-hour window, get a utility template approved with three body variables
+   — `{{1}}` what happened, `{{2}}` the detail, `{{3}}` the link — and set `WHATSAPP_ALERT_TEMPLATE`.
+   Without it, only people who messaged the bot in the last 24 hours get alerts there.
+5. Drain the WhatsApp outbox every minute (its own job: the email drain answers 503 whenever SMTP
+   is not configured, and WhatsApp must not depend on it):
+
+```
+gcloud scheduler jobs create http bt-whatsapp-dispatch \
+  --location=asia-south1 --schedule="* * * * *" \
+  --uri="https://<bt-booking-service-url>/internal/whatsapp/dispatch" \
+  --http-method=POST \
+  --headers="x-internal-secret=<INTERNAL_SERVICE_SECRET>"
+```
+
+Alerts go only to numbers that have messaged the bot (their first menu tells them alerts will come
+there — the opt-in WhatsApp requires) and never after STOP. Before 0043 is applied the bot still
+answers, but records no opt-ins and queues no alerts; the dispatch job answers 503
+`WHATSAPP_NOT_MIGRATED`.
+
 **2. Gateway:**
 ```bash
 gcloud run deploy bt-gateway --source bt-gateway --region "$REGION" --project "$PROJECT" \

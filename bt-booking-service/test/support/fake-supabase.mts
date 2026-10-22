@@ -11,7 +11,9 @@
  */
 export type Row = Record<string, any>
 
-const UNIQUE: Record<string, string> = { alerts: 'dedupe_key', notification_outbox: 'dedupe_key' }
+const UNIQUE: Record<string, string> = {
+  alerts: 'dedupe_key', notification_outbox: 'dedupe_key', whatsapp_outbox: 'dedupe_key', whatsapp_contacts: 'wa_id',
+}
 
 export function createFakeSupabase() {
   const store: Record<string, Row[]> = {}
