@@ -22,7 +22,8 @@ import {
 const VEHICLE_COLUMNS =
   'id, driver_id, fleet_owner_id, rc_number, capacity_tons, body_type, axle_config, maker_model, ' +
   'fuel_type, rc_expiry, model_category, emission_norm, manufacture_year, volume_cuft, ' +
-  'current_odometer_km, created_at'
+  // is_active: VehicleRow declared it but it was never selected, so every truck read as active.
+  'current_odometer_km, is_active, created_at'
 
 export type CreateVehicleInput = {
   rc_number: string
@@ -215,7 +216,7 @@ export async function replaceVehicleLanes(vehicleId: string, lanes: LaneInput[])
     }
     throw new Error(`vehicle_lanes insert failed: ${error.message}`)
   }
-  return data ?? []
+  return withObservedTrips(vehicleId, (data ?? []) as LaneRow[])
 }
 
 export async function listVehicleLanes(vehicleId: string) {
@@ -225,5 +226,65 @@ export async function listVehicleLanes(vehicleId: string) {
     .eq('vehicle_id', vehicleId)
     .order('is_primary', { ascending: false })
   if (error) throw new Error(`vehicle_lanes select failed: ${error.message}`)
-  return data ?? []
+  return withObservedTrips(vehicleId, (data ?? []) as LaneRow[])
+}
+
+// ── trips observed on a lane ────────────────────────────────────────────────
+// vehicle_lanes.trips_observed was never written (and every lane edit deletes and re-inserts the
+// rows), so the screen showed 0 next to "observed from completed trips, not hardcoded". It is now
+// COUNTED from this truck's finished bookings: a trip belongs to a lane when its pickup and drop
+// match the lane's cities by name, or lie within LANE_MATCH_KM of the lane's end points.
+
+type LaneRow = {
+  id: string; origin_city: string; destination_city: string
+  origin_lat: number | string | null; origin_lng: number | string | null
+  dest_lat: number | string | null; dest_lng: number | string | null
+  trips_observed?: number
+  [k: string]: unknown
+}
+type TripRow = {
+  source_address: string | null; destination_address: string | null
+  source_lat: number | string | null; source_lng: number | string | null
+  dest_lat: number | string | null; dest_lng: number | string | null
+}
+
+export const LANE_MATCH_KM = 25
+
+function kmBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const r = (d: number) => (d * Math.PI) / 180
+  const dLat = r(bLat - aLat), dLng = r(bLng - aLng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.sqrt(h))
+}
+const n = (v: number | string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v))
+function endMatches(city: string, lat: number | null, lng: number | null, address: string | null, tLat: number | null, tLng: number | null): boolean {
+  if (city && address && address.toLowerCase().includes(city.trim().toLowerCase())) return true
+  if (lat !== null && lng !== null && tLat !== null && tLng !== null && Number.isFinite(lat + lng + tLat + tLng)) return kmBetween(lat, lng, tLat, tLng) <= LANE_MATCH_KM
+  return false
+}
+
+/** Pure: how many of these trips ran this lane. Exported for the unit suite. */
+export function countLaneTrips(lane: LaneRow, trips: TripRow[]): number {
+  return trips.filter((t) =>
+    endMatches(lane.origin_city, n(lane.origin_lat), n(lane.origin_lng), t.source_address, n(t.source_lat), n(t.source_lng)) &&
+    endMatches(lane.destination_city, n(lane.dest_lat), n(lane.dest_lng), t.destination_address, n(t.dest_lat), n(t.dest_lng)),
+  ).length
+}
+
+async function withObservedTrips(vehicleId: string, lanes: LaneRow[]): Promise<LaneRow[]> {
+  if (lanes.length === 0) return lanes
+  const supabase = getSupabase()
+  const cols = 'source_address, destination_address, source_lat, source_lng, dest_lat, dest_lng'
+  // Fleet trips name the truck; a solo trip's truck is its driver's own (vehicles.driver_id).
+  const { data: v } = await supabase.from('vehicles').select('driver_id, fleet_owner_id').eq('id', vehicleId).maybeSingle()
+  const veh = v as { driver_id: string | null; fleet_owner_id: string | null } | null
+  const [{ data: byTruck, error: e1 }, solo] = await Promise.all([
+    supabase.from('bookings').select(cols).eq('vehicle_id', vehicleId).in('status', ['completed', 'paid']),
+    veh?.driver_id && !veh.fleet_owner_id
+      ? supabase.from('bookings').select(cols).eq('driver_id', veh.driver_id).is('fleet_owner_id', null).in('status', ['completed', 'paid'])
+      : Promise.resolve({ data: [] as TripRow[], error: null }),
+  ])
+  if (e1 || solo.error) return lanes // keep the stored value rather than fail the page
+  const trips = [...((byTruck ?? []) as TripRow[]), ...((solo.data ?? []) as TripRow[])]
+  return lanes.map((l) => ({ ...l, trips_observed: countLaneTrips(l, trips) }))
 }

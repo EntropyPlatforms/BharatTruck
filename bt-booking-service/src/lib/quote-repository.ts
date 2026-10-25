@@ -188,8 +188,31 @@ export async function listQuotesForBooking(
 
   const { data, error } = await query
   if (error) throw new Error(`DB list quotes failed: ${error.message}`)
-  return ((data ?? []) as unknown as QuoteCarrierRow[]).map(toQuoteWithCarrier)
+  const quotes = ((data ?? []) as unknown as QuoteCarrierRow[]).map(toQuoteWithCarrier)
+  const driverIds = quotes.flatMap((q) => (q.carrier?.kind === 'driver' ? [q.carrier.id] : []))
+  const counts = await completedTripCounts(driverIds)
+  if (counts) for (const q of quotes) if (q.carrier?.kind === 'driver') q.carrier.total_trips = counts.get(q.carrier.id) ?? 0
+  return quotes
 }
+
+// Finished trips per driver, counted from bookings (completed or paid). drivers.total_trips is
+// only ever written by the complete_trip() database function, which no code calls — so it reads
+// 0 for every driver. Counting is self-correcting and includes every past trip. Returns null for
+// the whole batch when the count cannot be read, so callers fall back rather than show a wrong 0.
+export async function completedTripCounts(driverIds: string[]): Promise<Map<string, number> | null> {
+  const ids = [...new Set(driverIds.filter(Boolean))]
+  const out = new Map<string, number>(ids.map((id) => [id, 0]))
+  if (ids.length === 0) return out
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('driver_id')
+    .in('driver_id', ids)
+    .in('status', ['completed', 'paid'])
+  if (error) return null
+  for (const r of (data ?? []) as { driver_id: string }[]) out.set(r.driver_id, (out.get(r.driver_id) ?? 0) + 1)
+  return out
+}
+
 
 // -----------------------------------------------------------
 // Carrier resolution for listQuotesForBooking

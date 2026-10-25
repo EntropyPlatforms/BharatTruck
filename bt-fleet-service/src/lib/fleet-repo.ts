@@ -165,6 +165,8 @@ async function driverIdentityForUser(user: UserLookupRow | null, noAccountMsg: s
   if (driverErr) throw new Error(`drivers select failed: ${driverErr.message}`)
   if (!driver) throw new FleetError('That driver has not completed driver onboarding yet', 'NOT_FOUND', 404)
   const d = driver as { id: string; average_rating: number | null; total_trips: number | null }
+  const counted = (await completedTripCounts([d.id]))?.get(d.id)
+  if (counted !== undefined) d.total_trips = counted
   return {
     driver_id: d.id,
     user_id: user.id,
@@ -250,6 +252,9 @@ export async function hydrateDriverIdentities(driverIds: string[]): Promise<Map<
     id: string; user_id: string; average_rating: number | null; total_trips: number | null
   }[]
   if (driverRows.length === 0) return out
+
+  const counts = await completedTripCounts(driverRows.map((d) => d.id))
+  if (counts) for (const d of driverRows) d.total_trips = counts.get(d.id) ?? 0
 
   const { data: users, error: userErr } = await supabase
     .from('users')
@@ -508,4 +513,22 @@ export async function getInviteForDriver(
 export async function getActiveDriverIds(fleetOwnerId: string): Promise<string[]> {
   const rows = await listFleetDrivers(fleetOwnerId, ['active'])
   return rows.map(r => r.driver_id)
+}
+
+// Finished trips per driver, counted from bookings (completed or paid). drivers.total_trips is
+// only ever written by the complete_trip() database function, which no code calls — so it reads
+// 0 for every driver. Counting is self-correcting and includes every past trip. Returns null for
+// the whole batch when the count cannot be read, so callers fall back rather than show a wrong 0.
+export async function completedTripCounts(driverIds: string[]): Promise<Map<string, number> | null> {
+  const ids = [...new Set(driverIds.filter(Boolean))]
+  const out = new Map<string, number>(ids.map((id) => [id, 0]))
+  if (ids.length === 0) return out
+  const { data, error } = await getSupabase()
+    .from('bookings')
+    .select('driver_id')
+    .in('driver_id', ids)
+    .in('status', ['completed', 'paid'])
+  if (error) return null
+  for (const r of (data ?? []) as { driver_id: string }[]) out.set(r.driver_id, (out.get(r.driver_id) ?? 0) + 1)
+  return out
 }
