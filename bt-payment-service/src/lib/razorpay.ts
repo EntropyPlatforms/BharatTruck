@@ -150,5 +150,8 @@ export function defaultGateway(): PaymentGateway | null {
   const keyId = process.env.RAZORPAY_KEY_ID?.trim()
   const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim()
   if (!keyId || !keySecret) return null
+  // Going live: RAZORPAY_REQUIRE_LIVE=true refuses rzp_test_ keys, so a forgotten test key can never
+  // take 'payments' that close real trips. Off by default while the platform is tested on test keys.
+  if (keyId.startsWith('rzp_test_') && (process.env.RAZORPAY_REQUIRE_LIVE ?? '').trim().toLowerCase() === 'true') return null
   return new HttpRazorpayGateway(keyId, keySecret, process.env.RAZORPAY_WEBHOOK_SECRET?.trim() || null)
 }

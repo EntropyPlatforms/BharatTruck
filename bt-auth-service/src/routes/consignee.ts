@@ -80,6 +80,11 @@ function getMailer(): nodemailer.Transporter {
 
 async function sendClaimEmail(email: string, link: string) {
   if (process.env.EMAIL_DEV_MODE === 'true' || !process.env.SMTP_USER) {
+    // Production with no SMTP: refuse rather than print a working claim link into the logs and report
+    // it as sent. The caller already turns a throw into a visible failure.
+    if (process.env.NODE_ENV === 'production' && process.env.EMAIL_DEV_MODE !== 'true') {
+      throw new Error('SMTP is not configured (SMTP_USER unset) — claim link not sent')
+    }
     console.log(`[DEV] Consignee claim link for ${email}: ${link}`)
     return
   }

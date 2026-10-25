@@ -8,6 +8,7 @@
  */
 import {
   ConsoleEmailSender,
+  UnconfiguredEmailSender,
   SmtpEmailSender,
   defaultEmailSender,
   buildOtpEmail,
@@ -57,6 +58,26 @@ async function main() {
     check('EMAIL_DEV_MODE=true overrides credentials -> Console',
       defaultEmailSender() instanceof ConsoleEmailSender)
   })
+
+  // Production with no SMTP must never print the delivery code to the logs and call it sent.
+  {
+    const savedEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    let sender: unknown = null
+    withEnv({}, () => { sender = defaultEmailSender() })
+    check('production + no SMTP_USER -> UnconfiguredEmailSender (not Console)', sender instanceof UnconfiguredEmailSender)
+    const logged: string[] = []
+    const origLog = console.log
+    console.log = (...a: unknown[]) => { logged.push(a.join(' ')) }
+    let threw = false
+    try { await (sender as UnconfiguredEmailSender).send({ to: 'r@x.example', subject: 's', text: 'code 123456', html: '' } as any) } catch { threw = true } finally { console.log = origLog }
+    check('…its send FAILS (so the caller reports it) and logs no code', threw && !logged.some((l) => l.includes('123456')))
+    withEnv({ EMAIL_DEV_MODE: 'true' }, () => { sender = defaultEmailSender() })
+    check('production + explicit EMAIL_DEV_MODE=true keeps the console sender (deliberate opt-in)', sender instanceof ConsoleEmailSender)
+    withEnv({ SMTP_USER: 'ops@example.com', SMTP_PASS: 'x' }, () => { sender = defaultEmailSender() })
+    check('production + SMTP -> SmtpEmailSender', sender instanceof SmtpEmailSender)
+    if (savedEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = savedEnv
+  }
 
   withEnv({ SMTP_USER: 'ops@example.com', SMTP_PASS: 'x', EMAIL_DEV_MODE: 'false' }, () => {
     check('EMAIL_DEV_MODE=false still sends -> Smtp',

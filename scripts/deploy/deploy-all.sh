@@ -107,6 +107,17 @@ FLEET_URL="$(svc_url bt-fleet-service)"
 [ -n "$FLEET_URL" ] || die "bt-fleet-service has no URL yet"
 set_env bt-payment-service "FLEET_SERVICE_URL=$FLEET_URL"
 
+# Tracking wiring (2026-10-25 audit): without these, booking never forwards GPS fixes to the
+# evaluator (route alerts + geofence events stay empty), pricing and fleet fall back to a docker
+# hostname that does not resolve on Cloud Run (every quote = straight-line x 1.3), and tracking
+# refuses every internal call for lack of the shared secret. All of it failed silently before.
+TRACKING_URL="$(svc_url bt-tracking-service)"
+[ -n "$TRACKING_URL" ] || die "bt-tracking-service has no URL yet"
+set_env bt-tracking-service "INTERNAL_SERVICE_SECRET=$INTERNAL_SERVICE_SECRET"
+set_env bt-booking-service "TRACKING_SERVICE_URL=$TRACKING_URL"
+set_env bt-pricing-service "TRACKING_INTERNAL_URL=$TRACKING_URL"
+set_env bt-fleet-service "TRACKING_INTERNAL_URL=$TRACKING_URL"
+
 # ── 3. gateway ────────────────────────────────────────────────────────────────
 # The gateway template already has the /api/fleet/ location block; it is inert until
 # FLEET_SERVICE_URL is set, so this line is what actually turns the fleet API on.

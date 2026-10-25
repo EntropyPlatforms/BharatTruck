@@ -25,6 +25,7 @@ import { assertValidTransition } from '../state.js'
 import * as repo from '../repository.js'
 import { supabase } from '../supabase.js'
 import * as podRepo from './repository.js'
+import { evidenceStorageConfigured } from './storage.js'
 import { defaultEvidenceStorage, signedEvidenceUrl, type EvidenceStorage } from './storage.js'
 import { DROP_RADIUS_M, NEAR_DROP_M, geofenceVerdict, haversineMeters, isFixFresh } from './geo.js'
 
@@ -318,6 +319,15 @@ export async function captureEvidence(
   }
   const verdict = geofenceVerdict(distanceM)
 
+  // Decode the uploaded bytes once (base64 → Buffer); null for a metadata-only capture.
+  const bytes = body.image_base64 ? Buffer.from(body.image_base64, 'base64') : null
+
+  // Production with nowhere to keep the photo: refuse BEFORE recording anything, so the driver
+  // retries once storage is fixed instead of the photo being silently reduced to a hash.
+  if (bytes && bytes.length > 0 && !evidenceStorageConfigured() && process.env.NODE_ENV === 'production') {
+    throw new BookingError('Delivery photos cannot be stored right now (photo storage is not configured). Try again shortly.', 'NOT_CONFIGURED' as never, 503)
+  }
+
   const { row, created } = await podRepo.insertEvidence({
     booking_id: bookingId,
     driver_id: driverId,
@@ -340,9 +350,20 @@ export async function captureEvidence(
     exif_raw: body.exif_raw ?? null,
   })
 
-  // Decode the uploaded bytes once (base64 → Buffer); null for a metadata-only capture.
-  const bytes = body.image_base64 ? Buffer.from(body.image_base64, 'base64') : null
   let sha256Received: string | null = row.sha256_received
+
+  // A resubmit of a photo whose bytes were NOT kept the first time (storage was off) now stores
+  // them — otherwise that photo would stay hash-only forever. Same object key, so it is idempotent.
+  if (!created && bytes && bytes.length > 0 && row.storage_status === 'no_op' && evidenceStorageConfigured()) {
+    const stored = await storage.store(
+      { bookingId, evidenceId: row.id, sha256Original: row.sha256_original, contentType: body.content_type ?? null },
+      bytes,
+      log,
+    )
+    await podRepo.updateEvidenceStorage(row.id, stored.status, stored.originalBytesUri, stored.sha256Received)
+    row.storage_status = stored.status
+    sha256Received = stored.sha256Received ?? sha256Received
+  }
 
   // Only the FIRST insert stores bytes / audits a capture — a resubmit already did.
   if (created) {
