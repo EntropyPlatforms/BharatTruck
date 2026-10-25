@@ -16,3 +16,8 @@ export function getSupabase(): SupabaseClient {
   }
   return client
 }
+
+/** Tests only: substitute the client (the booking service has the same seam). */
+export function __setFleetSupabaseForTests(c: SupabaseClient | null): void {
+  client = c
+}

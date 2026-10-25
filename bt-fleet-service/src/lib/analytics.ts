@@ -280,6 +280,37 @@ export type FinanceLike = {
   insurance_annual_inr: number
   permit_annual_inr: number
   fitness_annual_inr: number
+  // Loan state — already fetched by listVehicleFinance; used to stop charging a closed loan.
+  start_date?: string | null
+  end_date?: string | null
+  tenure_months?: number | string | null
+  outstanding_inr?: number | string | null
+}
+
+/**
+ * Is this EMI still being paid at `asOf`? A loan is closed when its end date has passed, nothing
+ * is outstanding, or start date + tenure is behind us. Unknown (no dates, no outstanding) = still
+ * running — charging a live loan matters more than missing a closed one with no paperwork.
+ * Exported for the unit suite.
+ */
+export function loanActive(finance: FinanceLike | undefined, asOf: Date = new Date()): boolean {
+  if (!finance || !(Number(finance.emi_amount_inr) > 0)) return false
+  const today = asOf.toISOString().slice(0, 10)
+  if (finance.end_date && String(finance.end_date).slice(0, 10) < today) return false
+  if (finance.outstanding_inr !== null && finance.outstanding_inr !== undefined && String(finance.outstanding_inr) !== '' && Number(finance.outstanding_inr) <= 0) return false
+  const tenure = Number(finance.tenure_months)
+  if (finance.start_date && Number.isFinite(tenure) && tenure > 0) {
+    const end = new Date(String(finance.start_date).slice(0, 10) + 'T00:00:00Z')
+    end.setUTCMonth(end.getUTCMonth() + tenure)
+    if (end.toISOString().slice(0, 10) <= today) return false
+  }
+  return true
+}
+
+/** The office overhead each ACTIVE truck carries per month. Exported for the unit suite. */
+export function overheadSharePerActive(monthlyOverhead: number | string | null | undefined, vehicles: { is_active?: boolean | null }[]): number {
+  const active = vehicles.filter((v) => v.is_active !== false).length
+  return active > 0 ? Number(monthlyOverhead ?? 0) / active : 0
 }
 
 // monthlyFixedForVehicle — EMI plus the annuals spread over 12, plus this truck's
@@ -287,8 +318,10 @@ export type FinanceLike = {
 export function monthlyFixedForVehicle(
   finance: FinanceLike | undefined,
   overheadSharePerMonth: number,
+  asOf: Date = new Date(),
 ): { total: number; emi: number } {
-  const emi = Number(finance?.emi_amount_inr ?? 0)
+  // A paid-off loan is no longer a monthly cost (it used to be charged forever).
+  const emi = loanActive(finance, asOf) ? Number(finance?.emi_amount_inr ?? 0) : 0
   const annuals =
     Number(finance?.insurance_annual_inr ?? 0) +
     Number(finance?.permit_annual_inr ?? 0) +
@@ -313,9 +346,9 @@ export async function perVehicleAnalytics(
 
   const months = monthsInPeriod(period)
   const days = daysInPeriod(period)
-  // Overhead is spread across ACTIVE vehicles — an owner with 10 trucks carries
-  // a tenth of the office cost on each.
-  const overheadShare = allVehicles.length > 0 ? Number(owner.monthly_overhead_inr) / allVehicles.length : 0
+  // Overhead is spread across ACTIVE vehicles — an owner with 10 trucks carries a tenth of the
+  // office cost on each. (It used to divide by ALL trucks, so a parked truck carried a share.)
+  const overheadShare = overheadSharePerActive(owner.monthly_overhead_inr, allVehicles)
 
   const byVehicle = new Map<string, TripEconomicsRow[]>()
   for (const r of rows) {
@@ -325,7 +358,7 @@ export async function perVehicleAnalytics(
     byVehicle.set(r.vehicle_id, list)
   }
 
-  return vehicles.map(v => analyseVehicle(v, byVehicle.get(v.id) ?? [], norms, finance.get(v.id), overheadShare, months, days))
+  return vehicles.map(v => analyseVehicle(v, byVehicle.get(v.id) ?? [], norms, finance.get(v.id), v.is_active === false ? 0 : overheadShare, months, days))
 }
 
 // analyseVehicle — PURE: one truck's P&L row from already-loaded inputs. Exported so the
@@ -390,14 +423,14 @@ export function computeFleetSummary(input: {
   owner: Pick<FleetOwnerRow, 'monthly_overhead_inr'>
   period: Period
   rows: TripEconomicsRow[]
-  vehicles: Pick<VehicleRow, 'id' | 'model_category'>[]
+  vehicles: (Pick<VehicleRow, 'id' | 'model_category'> & { is_active?: boolean | null })[]
   norms: Map<string, { kms_per_year: number }>
   finance: Map<string, FinanceLike>
 }): FleetSummary {
   const { owner, period, rows, vehicles, norms, finance } = input
   const months = monthsInPeriod(period)
   const days = daysInPeriod(period)
-  const overheadShare = vehicles.length > 0 ? Number(owner.monthly_overhead_inr) / vehicles.length : 0
+  const overheadShare = overheadSharePerActive(owner.monthly_overhead_inr, vehicles)
 
   // Fleet-wide expected distance is the sum of each truck's own annual-km norm —
   // a mixed fleet has no single denominator.
@@ -421,7 +454,7 @@ export function computeFleetSummary(input: {
   // Reuse the already-loaded rows rather than re-running perVehicleAnalytics —
   // the summary must stay a fixed number of queries.
   for (const v of vehicles) {
-    const fixed = monthlyFixedForVehicle(finance.get(v.id), overheadShare)
+    const fixed = monthlyFixedForVehicle(finance.get(v.id), v.is_active === false ? 0 : overheadShare)
     fleetMonthlyFixed += fixed.total
     fleetMonthlyEmi += fixed.emi
     const vehicleRows = byVehicle.get(v.id) ?? []

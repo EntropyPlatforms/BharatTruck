@@ -122,6 +122,8 @@ export type VehicleRow = {
   manufacture_year: number | null
   volume_cuft: number | null
   current_odometer_km: number | null
+  /** false = deactivated; it then carries no share of office overhead. */
+  is_active?: boolean
   created_at: string
 }
 
