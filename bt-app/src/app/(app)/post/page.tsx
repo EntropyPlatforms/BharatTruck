@@ -36,6 +36,7 @@ import {
   priceQuoteBasis,
   priceQuoteHeading,
   quoteKindOf,
+  setExpectedQuantity,
 } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import FleetPairPicker, { type FleetPair } from '@/components/fleet-pair-picker'
@@ -43,6 +44,7 @@ import AddressPicker, { type PickedLocation } from '@/components/address-picker'
 import RouteMap from '@/components/maps/RouteMap'
 import { cityOf } from '@/components/driver/trip-bits'
 import { inr, todayInIndia } from '@/lib/format'
+import CargoDetails, { EMPTY_CARGO_DETAILS, dimensionsJson, expectedQuantity, type CargoDetailsValue } from '@/components/cargo-details'
 import { VEHICLE_CLASS_LIMITS, canCarry, vehicleClassForWeight } from '@/lib/vehicle-class'
 import QuoteRoughBreakdown from '@/components/quote-rough-breakdown'
 import {
@@ -114,6 +116,7 @@ export default function PostLoadPage() {
   const [vehicleType, setVehicleType] = useState<PriceQuoteVehicleType>('lcv')
   const [loadType, setLoadType] = useState<PriceQuoteLoadType>('general')
   const [weightKg, setWeightKg] = useState('')
+  const [cargo, setCargo] = useState<CargoDetailsValue>(EMPTY_CARGO_DETAILS)
   // Why the vehicle class just changed (or why a lighter one is greyed out) — the weight decides.
   const [classNote, setClassNote] = useState<string | null>(null)
 
@@ -310,6 +313,7 @@ export default function PostLoadPage() {
         consignee,
         receiver_email: receiverEmail.trim() || undefined,
         booking_type: bookingType,
+        dimensions_json: dimensionsJson(cargo),
         // A distributor attaches to their OWN fleet below (never a solo target driver).
         target_driver_id: (!distributorDirect && bookingType === 'direct') ? targetDriverId.trim() || undefined : undefined,
         auction_deadline:
@@ -317,6 +321,14 @@ export default function PostLoadPage() {
             ? new Date(auctionDeadline).toISOString()
             : undefined,
       })
+
+      // The expected count is its own shipper-only call (the server holds it, never the driver).
+      // Best-effort: the load is posted either way; the shipper can set it on the load page.
+      const expected = expectedQuantity(cargo)
+      if (expected) {
+        try { await setExpectedQuantity(booking.id, expected.qty, expected.unit) }
+        catch { toast.message('Load posted — the expected count could not be saved; add it on the load page.') }
+      }
 
       if (distributorDirect) {
         // Create → attach to my fleet → pair my chosen truck + driver. If the pairing step
@@ -563,6 +575,7 @@ export default function PostLoadPage() {
                 </div>
               </Field>
             </div>
+            <CargoDetails value={cargo} onChange={setCargo} />
             <p className="mt-3 text-xs text-gray-500 inline-flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-blue-500" /> Distance is derived from the coordinates above.
             </p>

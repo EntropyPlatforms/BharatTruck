@@ -390,6 +390,11 @@ function userProfile(row: Record<string, unknown>) {
     role:           row.role,
     // FB-04: clients need GSTIN to know whether post-load is allowed.
     gstin:          row.gstin ?? null,
+    // Billing address — what goes on a shipper's invoices and e-way bills.
+    address:        row.address ?? null,
+    city:           row.city ?? null,
+    state:          row.state ?? null,
+    pincode:        row.pincode ?? null,
     primary_persona: row.primary_persona ?? row.role ?? null,
     email_verified: row.email_verified ?? false,
     google_sub:     row.google_sub ?? null,
@@ -1077,6 +1082,36 @@ export async function authRoutes(app: FastifyInstance) {
       .single()
     if (error || !user) {
       return reply.status(500).send({ success: false, error: 'Failed to update GSTIN' })
+    }
+    return reply.send({ success: true, data: { user: userProfile(user) } })
+  })
+
+  // PATCH /auth/me/address — the caller's billing address (users.address/city/state/pincode).
+  // The columns always existed but nothing filled them, so a shipper had no billing address at
+  // all (18 Oct audit). Any field may be cleared with null; blank strings are treated as null.
+  app.patch('/me/address', { preHandler: authenticate }, async (req, reply) => {
+    const blankToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v)
+    const body = z.object({
+      address: z.preprocess(blankToNull, z.string().trim().max(300).nullable()).optional(),
+      city:    z.preprocess(blankToNull, z.string().trim().max(80).nullable()).optional(),
+      state:   z.preprocess(blankToNull, z.string().trim().max(80).nullable()).optional(),
+      pincode: z.preprocess(blankToNull, z.string().trim().regex(/^[1-9][0-9]{5}$/, 'PIN code is 6 digits').nullable()).optional(),
+    }).strict().safeParse(req.body)
+    if (!body.success) {
+      return reply.status(400).send({ success: false, error: body.error.errors[0].message, code: 'VALIDATION_ERROR' })
+    }
+    const patch = Object.fromEntries(Object.entries(body.data).filter(([, v]) => v !== undefined))
+    if (Object.keys(patch).length === 0) {
+      return reply.status(400).send({ success: false, error: 'Nothing to update', code: 'VALIDATION_ERROR' })
+    }
+    const { data: user, error } = await app.supabase
+      .from('users')
+      .update(patch)
+      .eq('id', req.user.userId)
+      .select('*')
+      .single()
+    if (error || !user) {
+      return reply.status(500).send({ success: false, error: 'Failed to update the address' })
     }
     return reply.send({ success: true, data: { user: userProfile(user) } })
   })

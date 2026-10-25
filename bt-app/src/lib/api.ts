@@ -204,6 +204,10 @@ export function getMe() {
 }
 
 /** FB-04: save shipper GSTIN on users.gstin (format matches users_gstin_format CHECK). */
+export function updateMyAddress(body: { address: string | null; city: string | null; state: string | null; pincode: string | null }) {
+  return authRequest<{ user: AuthUser }>('/auth/me/address', { method: 'PATCH', body: JSON.stringify(body) })
+}
+
 export function updateMyGstin(gstin: string | null) {
   return authRequest<{ user: AuthUser }>('/auth/me/gstin', {
     method: 'PATCH',
@@ -817,6 +821,8 @@ export type CreateBookingPayload = {
   source_gate_lng?: number
   dest_gate_lat?: number
   dest_gate_lng?: number
+  /** Cargo size: volume_cuft and/or length_ft, width_ft, height_ft. */
+  dimensions_json?: Record<string, number>
 }
 
 export function createBooking(payload: CreateBookingPayload) {
@@ -830,6 +836,13 @@ export function createBooking(payload: CreateBookingPayload) {
     Object.entries({ ...payload, consignee }).filter(([, v]) => v !== undefined && v !== null && v !== ''),
   )
   return request<Booking>('/bookings/', { method: 'POST', body: JSON.stringify(clean) })
+}
+
+/** The shipper's expected delivery count (checked against the receiver's count at delivery). */
+export function setExpectedQuantity(id: string, expectedQuantity: number, unit?: string) {
+  return request<Booking>(`/bookings/${id}/expected-quantity`, {
+    method: 'PATCH', body: JSON.stringify({ expected_quantity: expectedQuantity, ...(unit ? { unit } : {}) }),
+  })
 }
 
 export function cancelBooking(id: string) {
