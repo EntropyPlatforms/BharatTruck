@@ -57,6 +57,13 @@ export class SmtpEmailSender implements EmailSender {
   }
 }
 
+/** Production without SMTP: every send fails loudly instead of logging the code. */
+export class UnconfiguredEmailSender implements EmailSender {
+  async send(): Promise<void> {
+    throw new Error('SMTP is not configured (SMTP_USER unset) — delivery code not sent')
+  }
+}
+
 /** Local-dev sender: logs the message instead of hitting a provider. */
 export class ConsoleEmailSender implements EmailSender {
   async send(msg: EmailMessage): Promise<void> {
@@ -76,6 +83,9 @@ export class ConsoleEmailSender implements EmailSender {
  *  would fail at delivery time instead of surfacing here. */
 export function defaultEmailSender(): EmailSender {
   if (process.env.EMAIL_DEV_MODE === 'true' || !process.env.SMTP_USER) {
+    // Production with no SMTP: a sender that FAILS, so the delivery code is never printed to
+    // the logs and reported as emailed.
+    if (process.env.NODE_ENV === 'production' && process.env.EMAIL_DEV_MODE !== 'true') return new UnconfiguredEmailSender()
     return new ConsoleEmailSender()
   }
   const from = process.env.POD_EMAIL_FROM ?? process.env.SMTP_FROM ?? process.env.SMTP_USER

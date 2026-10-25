@@ -32,10 +32,20 @@ export interface LocationFix {
   recorded_at: string
 }
 
+// Said once per process: without these, every GPS fix skips the route/geofence evaluator and
+// every GPS-based alert stays silent — which used to happen with no log line at all.
+let warnedUnwired = false
+
 export function emitLocationFix(fix: LocationFix, log?: Logger): void {
   const base = process.env.TRACKING_SERVICE_URL
   const secret = process.env.INTERNAL_SERVICE_SECRET
-  if (!base || !secret) return
+  if (!base || !secret) {
+    if (!warnedUnwired && process.env.NODE_ENV === 'production') {
+      warnedUnwired = true
+      log?.warn({ tracking_url_set: !!base, secret_set: !!secret }, 'tracking evaluator NOT wired (TRACKING_SERVICE_URL / INTERNAL_SERVICE_SECRET unset) — GPS fixes are not evaluated, route alerts and geofence events will stay empty')
+    }
+    return
+  }
 
   void fetch(`${base}/internal/evaluate`, {
     method: 'POST',

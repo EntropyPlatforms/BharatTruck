@@ -46,7 +46,7 @@ export const PAYMENT_STATUS_SETTLED = 'settled' as const
 export type PaymentRecord = {
   booking_id: string
   amount: number
-  mode: PaymentMode | 'razorpay'
+  mode: PaymentMode | 'razorpay' | 'razorpay_test' // razorpay_test = an rzp_test_ capture: no real money
   reference: string | null
   recorded_by: string
   status: 'settled' | 'captured'

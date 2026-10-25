@@ -39,7 +39,9 @@ const MODES: { value: PaymentMode; label: string }[] = [
 ]
 
 const modeLabel = (m: PaymentRecord['mode'] | null) =>
-  m === 'razorpay' ? 'online payment' : MODES.find((x) => x.value === m)?.label ?? m ?? '—'
+  m === 'razorpay' ? 'online payment'
+    : m === 'razorpay_test' ? 'online payment (TEST — no real money)'
+    : MODES.find((x) => x.value === m)?.label ?? m ?? '—'
 
 /** What this trip is contractually worth — the same precedence the server settles on. */
 const agreedPrice = (b: Booking) => b.final_price ?? b.quoted_price
@@ -281,7 +283,7 @@ export default function PaymentSection({ booking, onChanged }: { booking: Bookin
           <div className="mt-5 pt-4 border-t-2 border-blue-600/80 text-left space-y-4">
             {payment.reference && (
               <div>
-                <p className="text-sm text-gray-500">{payment.mode === 'razorpay' ? 'Payment ID' : 'Reference'}</p>
+                <p className="text-sm text-gray-500">{payment.mode === 'razorpay' || payment.mode === 'razorpay_test' ? 'Payment ID' : 'Reference'}</p>
                 <div className="mt-0.5 flex items-center gap-2 min-w-0">
                   <p className={cx(MONO, 'text-[0.9375rem] font-medium text-gray-900 truncate')}>{payment.reference}</p>
                   <button

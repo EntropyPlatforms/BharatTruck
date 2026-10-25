@@ -53,6 +53,11 @@ type Logger = { warn(obj: unknown, msg: string): void }
 // bucket name (e.g. `pod-evidence`) → uploads. Same kill-switch shape 0025 used.
 const BUCKET_ENV = 'POD_EVIDENCE_BUCKET'
 
+/** True when delivery-photo bytes have somewhere to go (POD_EVIDENCE_BUCKET is set). */
+export function evidenceStorageConfigured(): boolean {
+  return !!bucketName()
+}
+
 function bucketName(): string | null {
   const b = process.env[BUCKET_ENV]?.trim()
   return b ? b : null

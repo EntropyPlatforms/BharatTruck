@@ -201,6 +201,26 @@ async function main() {
   const replay = await post('/auth/reset-password', { token, password: 'another-password' })
   check('replaying the same token is refused (single-use)', replay.statusCode === 400, `(got ${replay.statusCode})`)
 
+  console.log('\n── production without SMTP: the link is never written to the logs ──')
+  {
+    const saved = { env: process.env.NODE_ENV, dev: process.env.EMAIL_DEV_MODE, user: process.env.SMTP_USER }
+    process.env.NODE_ENV = 'production'
+    delete process.env.EMAIL_DEV_MODE
+    delete process.env.SMTP_USER
+    const cap3 = captureConsoleLog()
+    let prodSent: any
+    try {
+      prodSent = await post('/auth/forgot-password', { email: KNOWN })
+    } finally {
+      cap3.restore()
+    }
+    check('production + no SMTP: still the generic answer (no account enumeration)', prodSent.statusCode === 200, `(got ${prodSent.statusCode})`)
+    check('production + no SMTP: NO reset link printed to stdout', !cap3.lines.some(l => l.includes('token=')), JSON.stringify(cap3.lines.filter(l => l.includes('token='))))
+    if (saved.env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = saved.env
+    if (saved.dev === undefined) delete process.env.EMAIL_DEV_MODE; else process.env.EMAIL_DEV_MODE = saved.dev
+    if (saved.user === undefined) delete process.env.SMTP_USER; else process.env.SMTP_USER = saved.user
+  }
+
   await app.close()
   console.log(`\n${failures.length ? 'RESULT: FAIL' : 'RESULT: PASS'} — ${passed} checks passed, ${failures.length} failed`)
   if (failures.length) { failures.forEach(f => console.log('  ✗ ' + f)); process.exit(1) }

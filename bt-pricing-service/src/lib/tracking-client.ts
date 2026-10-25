@@ -32,12 +32,13 @@ export class HttpRouteDistanceClient implements RouteDistanceClient {
         body: JSON.stringify(coords),
         signal: ctrl.signal,
       })
-      if (!res.ok) return null
+      if (!res.ok) { warnRouteFallback(`tracking answered ${res.status}`); return null }
       const json = (await res.json()) as { success?: boolean; data?: { distance_km?: number } }
       const km = json?.data?.distance_km
       return typeof km === 'number' && km > 0 ? km : null
-    } catch {
+    } catch (err) {
       // Timeout / network / abort / bad JSON — all resolve to "no routed distance", fall back.
+      warnRouteFallback(err instanceof Error ? err.message : String(err))
       return null
     } finally {
       clearTimeout(timer)
@@ -58,7 +59,19 @@ export function __setRouteDistanceClientForTests(client: RouteDistanceClient | n
 export function defaultRouteDistanceClient(): RouteDistanceClient | null {
   if (injected) return injected
   const secret = process.env.INTERNAL_SERVICE_SECRET
-  if (!secret) return null
+  if (!secret) { warnRouteFallback('INTERNAL_SERVICE_SECRET unset'); return null }
+  if (!process.env.TRACKING_INTERNAL_URL) warnRouteFallback('TRACKING_INTERNAL_URL unset — using the docker hostname, which does not resolve on Cloud Run')
   const baseUrl = process.env.TRACKING_INTERNAL_URL ?? 'http://bt-tracking-service:3006'
   return new HttpRouteDistanceClient(baseUrl, secret)
+}
+
+// Every quote that cannot get a road distance silently becomes straight-line × 1.3. Say why in the
+// log — at most every 10 minutes per reason, so a misconfiguration is visible without flooding.
+const lastWarned = new Map<string, number>()
+function warnRouteFallback(reason: string): void {
+  if (process.env.NODE_ENV === 'test') return
+  const now = Date.now()
+  if (now - (lastWarned.get(reason) ?? 0) < 10 * 60_000) return
+  lastWarned.set(reason, now)
+  console.warn(JSON.stringify({ level: 'warn', msg: 'route distance unavailable — quotes fall back to straight-line × 1.3', reason }))
 }

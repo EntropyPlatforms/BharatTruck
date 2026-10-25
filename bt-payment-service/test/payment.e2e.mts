@@ -328,7 +328,9 @@ async function main() {
   const rzp = { orders: [] as Row[], payments: [] as Row[], created: 0 }
   const gateway = {
     keyId: signer.keyId,
-    testMode: signer.testMode,
+    // Mutable so one run is a LIVE key (records mode razorpay) and another a TEST key
+    // (records razorpay_test). Starts live.
+    testMode: false as boolean,
     async createOrder(a: { amountPaise: number; receipt: string; notes: Record<string, string> }) {
       const o = { id: `order_${++rzp.created}`, amount: a.amountPaise, amount_paid: 0, currency: 'INR', receipt: a.receipt, status: 'created', notes: a.notes }
       rzp.orders.unshift(o)
@@ -803,7 +805,8 @@ async function main() {
   r = await rz('order', { booking_id: R1 }, SHIP)
   check('no second order once the trip is paid', r.statusCode === 409 && rzp.orders.filter(o => o.receipt === R1).length === 1, `(got ${r.statusCode})`)
 
-  console.log('\n── online payment: fleet trip keeps the D-7 split ──')
+  console.log('\n── online payment: fleet trip keeps the D-7 split (TEST key) ──')
+  gateway.testMode = true // an rzp_test_ capture takes no real money and must say so
   r = await rz('order', { booking_id: R2 }, SHIP)
   r = await rz('verify', { booking_id: R2, ...payInCheckout(r.json().data.order_id) }, SHIP)
   {
@@ -811,6 +814,25 @@ async function main() {
     const driver = await payoutOf(R2, 'driver')
     check('fleet online payment 200 paid', r.statusCode === 200 && bStatus(R2) === 'paid', `(got ${r.statusCode}/${bStatus(R2)})`)
     check('split 70/30, both rows pending', owner?.amount === 4200 && driver?.amount === 1800 && owner?.status === 'pending' && driver?.status === 'pending', JSON.stringify([owner, driver]))
+    const p2 = await fakeStore.getPayment(R2)
+    check('a TEST-key capture is recorded as razorpay_test, never as a real razorpay payment', p2?.mode === 'razorpay_test', JSON.stringify(p2))
+  }
+  gateway.testMode = false
+
+  console.log('\n── going live: test keys can be refused ──')
+  {
+    const { defaultGateway } = await import('../src/lib/razorpay.js')
+    const saved = { id: process.env.RAZORPAY_KEY_ID, secret: process.env.RAZORPAY_KEY_SECRET, live: process.env.RAZORPAY_REQUIRE_LIVE }
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_abc'; process.env.RAZORPAY_KEY_SECRET = 'x'
+    delete process.env.RAZORPAY_REQUIRE_LIVE
+    check('test keys work while testing (switch off)', defaultGateway()?.testMode === true)
+    process.env.RAZORPAY_REQUIRE_LIVE = 'true'
+    check('RAZORPAY_REQUIRE_LIVE=true refuses a test key — Razorpay switches off', defaultGateway() === null)
+    process.env.RAZORPAY_KEY_ID = 'rzp_live_abc'
+    check('…and still accepts a live key', defaultGateway()?.testMode === false)
+    if (saved.id === undefined) delete process.env.RAZORPAY_KEY_ID; else process.env.RAZORPAY_KEY_ID = saved.id
+    if (saved.secret === undefined) delete process.env.RAZORPAY_KEY_SECRET; else process.env.RAZORPAY_KEY_SECRET = saved.secret
+    if (saved.live === undefined) delete process.env.RAZORPAY_REQUIRE_LIVE; else process.env.RAZORPAY_REQUIRE_LIVE = saved.live
   }
 
   console.log('\n── online payment: captured amount must equal the agreed price ──')

@@ -169,6 +169,11 @@ function notifyPasswordChanged(userId: string, log?: { warn(o: unknown, m: strin
 
 async function sendOtpEmail(email: string, otp: string) {
   if (process.env.EMAIL_DEV_MODE === 'true' || !process.env.SMTP_USER) {
+    // Production with no SMTP: refuse rather than print a working verification code into the logs and report
+    // it as sent. The caller already turns a throw into a visible failure.
+    if (process.env.NODE_ENV === 'production' && process.env.EMAIL_DEV_MODE !== 'true') {
+      throw new Error('SMTP is not configured (SMTP_USER unset) — verification code not sent')
+    }
     console.log(`[DEV] Email OTP for ${email}: ${otp}`)
     return
   }
@@ -207,6 +212,11 @@ function replyEmailSendFailed(reply: FastifyReply) {
 
 async function sendPasswordResetEmail(email: string, link: string) {
   if (process.env.EMAIL_DEV_MODE === 'true' || !process.env.SMTP_USER) {
+    // Production with no SMTP: refuse rather than print a working password-reset link into the logs and report
+    // it as sent. The caller already turns a throw into a visible failure.
+    if (process.env.NODE_ENV === 'production' && process.env.EMAIL_DEV_MODE !== 'true') {
+      throw new Error('SMTP is not configured (SMTP_USER unset) — password-reset link not sent')
+    }
     console.log(`[DEV] Password reset link for ${email}: ${link}`)
     return
   }

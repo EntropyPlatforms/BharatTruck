@@ -30,7 +30,7 @@ export function agreedPaise(booking: { quoted_price?: number | null; final_price
 
 export async function recordOnlinePayment(
   booking: BookingView,
-  paid: { amount: number; paymentId: string },
+  paid: { amount: number; paymentId: string; testMode?: boolean },
   payerUserId: string,
   deps: PaymentDeps,
 ) {
@@ -83,7 +83,9 @@ export async function recordOnlinePayment(
     await deps.store.insertPayment({
       booking_id: booking.id,
       amount: paid.amount,
-      mode: 'razorpay',
+      // A test-key capture takes no real money: say so on the row (payments.mode has no CHECK),
+      // so reports, receipts and anyone reconciling can tell it from a real payment.
+      mode: paid.testMode ? 'razorpay_test' : 'razorpay',
       reference: paid.paymentId,
       recorded_by: payerUserId,
       // The gateway's own word for money that has been taken, and one the live
@@ -95,7 +97,7 @@ export async function recordOnlinePayment(
   try {
     await deps.booking.markPaid(booking.id, {
       amount: paid.amount,
-      method: 'razorpay',
+      method: paid.testMode ? 'razorpay_test' : 'razorpay',
       payment_id: paid.paymentId,
       payout_status: 'pending',
     })
@@ -151,7 +153,7 @@ export async function settleFromOrder(
 
   return recordOnlinePayment(
     booking,
-    { amount: captured.amount / PAISE, paymentId: captured.id },
+    { amount: captured.amount / PAISE, paymentId: captured.id, testMode: gateway.testMode },
     orderNote(order, 'payer_user_id') ?? payerFallback,
     deps,
   )

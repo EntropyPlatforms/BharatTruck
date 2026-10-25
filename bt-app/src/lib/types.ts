@@ -1527,7 +1527,7 @@ export type PaymentMode = 'cash' | 'upi' | 'direct'
 export type PaymentRecord = {
   booking_id: string
   amount: number
-  mode: PaymentMode | 'razorpay'
+  mode: PaymentMode | 'razorpay' | 'razorpay_test'
   reference: string | null
   recorded_by: string
   status: 'settled' | 'captured'

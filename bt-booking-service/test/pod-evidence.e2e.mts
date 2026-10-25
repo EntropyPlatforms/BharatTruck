@@ -259,6 +259,34 @@ async function main() {
   check('the original bytes were uploaded once, unmodified in size', uploads.length === 1 && uploads[0].size === Buffer.from(PHOTO_B64, 'base64').length, JSON.stringify(uploads))
   delete process.env.POD_EVIDENCE_BUCKET
 
+  console.log('\n── evidence storage: never silently hash-only in production')
+  seed()
+  uploads.length = 0
+  {
+    const savedEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    delete process.env.POD_EVIDENCE_BUCKET
+    r = await capture({ ...validCapture, image_base64: PHOTO_B64 })
+    check('production + photo bytes + no bucket → 503, the driver can retry', r.statusCode === 503, `(got ${r.statusCode})`)
+    check('…and NOTHING was recorded (no hash-only row left behind)', store.pod_evidence.length === 0, JSON.stringify(store.pod_evidence))
+    r = await capture(validCapture)
+    check('production + metadata-only capture (no bytes) still records', r.statusCode === 201 || r.statusCode === 200, `(got ${r.statusCode})`)
+    if (savedEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = savedEnv
+  }
+  // A photo captured while storage was off is stored when it is sent again after storage is on.
+  seed()
+  uploads.length = 0
+  delete process.env.POD_EVIDENCE_BUCKET
+  r = await capture({ ...validCapture, image_base64: PHOTO_B64 })
+  check('(dev) storage off → that photo is hash-only (no_op)', r.json().data?.storage_status === 'no_op', r.json().data?.storage_status)
+  process.env.POD_EVIDENCE_BUCKET = 'bt-pod-worm'
+  r = await capture({ ...validCapture, image_base64: PHOTO_B64 })
+  check('resending it once storage is on STORES the bytes (no longer hash-only forever)', r.json().data?.storage_status === 'stored' && uploads.length === 1, `${r.json().data?.storage_status} uploads=${uploads.length}`)
+  check('…on the same evidence row, not a second one', store.pod_evidence.length === 1 && String(store.pod_evidence[0].original_bytes_uri).startsWith('supabase://bt-pod-worm/pod/'), JSON.stringify(store.pod_evidence.map((x: any) => x.original_bytes_uri)))
+  r = await capture({ ...validCapture, image_base64: PHOTO_B64 })
+  check('a further resend does not upload again', uploads.length === 1, `uploads=${uploads.length}`)
+  delete process.env.POD_EVIDENCE_BUCKET
+
   // ═══ DECISION 2 — GEOFENCE-GATED OTP (§5.5, D-14) ═══════════════════════════
   console.log('\n── geofence-gated OTP: pass / block / degrade (gate ENFORCED)')
   // Every case below is run with the kill switch ON. The switch's own two positions are
