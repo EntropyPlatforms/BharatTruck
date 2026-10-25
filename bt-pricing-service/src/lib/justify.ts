@@ -29,8 +29,12 @@ function envNum(name: string, fallback: number): number {
 //  - MAINT_PER_KM: tyres + periodic service + lubricants, blended per-km.
 //  - DRIVER_PER_DAY: single-crew allowance+wage per running day.
 //  - AVG_KM_PER_DAY: interstate running day, for trip-day count.
+import { KM_PER_DAY, TOLL_PER_KM, classForWeightKg } from './cost-constants.js'
+import { dieselPriceInr } from './diesel.js'
+
 const BLENDED_KMPL = 4.5
-const TOLL_PER_KM = 2.2
+// Tolls and the running day come from cost-constants.ts (the cost floor's figures), so a bid's
+// breakdown and the floor it is compared with agree.
 const MAINT_PER_KM = 4.0
 const DRIVER_PER_DAY = 1200
 const AVG_KM_PER_DAY = 350
@@ -98,8 +102,9 @@ function reconcileToTotal(c: JustifyComponents, target: number): JustifyComponen
 export function justifyPrice(input: JustifyInput): JustifyBreakdown {
   const amount = Math.round(input.amount)
   const distance = Math.max(0, input.distance_km)
-  const tripDays = Math.max(1, Math.ceil(distance / AVG_KM_PER_DAY))
-  const fuelPerKm = envNum('DIESEL_PRICE_INR', 90) / BLENDED_KMPL
+  const tripDays = Math.max(1, Math.ceil(distance / KM_PER_DAY))
+  const fuelPerKm = dieselPriceInr() / BLENDED_KMPL
+  const tollPerKm = TOLL_PER_KM[classForWeightKg(input.weight_kg)]
 
   const handlingBase = HANDLING_BASE[input.load_type] ?? HANDLING_DEFAULT
   const heavySurcharge = input.weight_kg > 5000 ? Math.ceil((input.weight_kg - 5000) / 1000) * 80 : 0
@@ -107,7 +112,7 @@ export function justifyPrice(input: JustifyInput): JustifyBreakdown {
   // Truck-agnostic typical cost of moving THIS load over THIS route.
   const raw: JustifyComponents = {
     fuel: fuelPerKm * distance,
-    tolls: TOLL_PER_KM * distance,
+    tolls: tollPerKm * distance,
     driver: DRIVER_PER_DAY * tripDays,
     maintenance: MAINT_PER_KM * distance,
     handling: handlingBase + heavySurcharge,

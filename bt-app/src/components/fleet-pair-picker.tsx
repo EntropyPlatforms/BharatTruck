@@ -20,11 +20,13 @@ import { Check, ChevronDown, Search, Truck, UserRound } from 'lucide-react'
 import { ApiError, listFleetDrivers, listVehicles } from '@/lib/api'
 import type { FleetDriver, Vehicle } from '@/lib/types'
 
-type TruckOpt = { id: string; rc: string; brand: string | null; driverId: string | null; capacityTons: number | null }
+type TruckOpt = { id: string; rc: string; brand: string | null; driverId: string | null; capacityTons: number | null ; truck: PairTruck }
 type DriverOpt = { driverId: string; name: string; vehicleId: string | null }
 type FleetDriverRow = FleetDriver & { driver?: { driver_id: string; full_name: string | null } | null }
 
-export type FleetPair = { vehicleId: string | null; driverId: string | null }
+/** What the quote's cost floor needs about the chosen truck (null fields = unknown on record). */
+export type PairTruck = { model_category: string | null; emission_norm: string | null; manufacture_year: number | null }
+export type FleetPair = { vehicleId: string | null; driverId: string | null; truck?: PairTruck | null }
 
 export default function FleetPairPicker({
   value,
@@ -49,7 +51,10 @@ export default function FleetPairPicker({
         if (cancelled) return
         const truckOpts: TruckOpt[] = (vs as (Vehicle & { is_active?: boolean })[])
           .filter(v => v.is_active !== false)
-          .map(v => ({ id: v.id, rc: v.rc_number, brand: v.maker_model ?? null, driverId: v.driver_id ?? null, capacityTons: v.capacity_tons ?? null }))
+          .map(v => ({
+            id: v.id, rc: v.rc_number, brand: v.maker_model ?? null, driverId: v.driver_id ?? null, capacityTons: v.capacity_tons ?? null,
+            truck: { model_category: v.model_category ?? null, emission_norm: v.emission_norm ?? null, manufacture_year: v.manufacture_year ?? null },
+          }))
 
         // driver_id → the truck dedicated to them, so picking a driver can bring their truck.
         const vehicleByDriver = new Map<string, string>()
@@ -81,13 +86,14 @@ export default function FleetPairPicker({
   const pickTruck = useCallback((id: string | null) => {
     const t = trucks.find(x => x.id === id)
     // A dedicated truck brings its driver; otherwise keep whatever driver is already chosen.
-    onChange({ vehicleId: id, driverId: t?.driverId ?? value.driverId })
+    onChange({ vehicleId: id, driverId: t?.driverId ?? value.driverId, truck: t?.truck ?? null })
   }, [trucks, value.driverId, onChange])
 
   const pickDriver = useCallback((id: string | null) => {
     const d = drivers.find(x => x.driverId === id)
-    onChange({ driverId: id, vehicleId: d?.vehicleId ?? value.vehicleId })
-  }, [drivers, value.vehicleId, onChange])
+    const vehicleId = d?.vehicleId ?? value.vehicleId
+    onChange({ driverId: id, vehicleId, truck: trucks.find(x => x.id === vehicleId)?.truck ?? null })
+  }, [drivers, trucks, value.vehicleId, onChange])
 
   const truckItems = useMemo(
     () => trucks.map(t => {

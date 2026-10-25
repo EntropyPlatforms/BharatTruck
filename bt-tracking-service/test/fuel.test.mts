@@ -143,3 +143,34 @@ test('computeFuel returns zero rather than Infinity on a zero-distance trip', ()
   assert.equal(f.litres_required, 0)
   assert.equal(f.estimated_fuel_cost_inr, 0)
 })
+
+// ── 18 Oct audit: solo trucks and the vehicle_class hint ─────────────────────
+test('no model on record + a known class (from the quote or the caller) → class average, not the 3.5 km/l default', () => {
+  const r = resolveMileageFrom(NORMS, null, 'HCV')
+  assert.equal(r.basis, 'vehicle_class')
+  assert.equal(r.vehicle_class, 'HCV')
+  // Average of the two HCV rows' BS6 figures (3.36, 4.03).
+  assert.ok(Math.abs(r.mileage_kmpl - (3.36 + 4.03) / 2) < 1e-9, String(r.mileage_kmpl))
+})
+
+test('a class hint never overrides a truck whose model IS on record', () => {
+  const r = resolveMileageFrom(NORMS, { model_category: 'MCV Cargo (15-19T)', emission_norm: 'BS6' }, 'HCV')
+  assert.equal(r.basis, 'vehicle_norms')
+  assert.equal(r.mileage_kmpl, 4.98)
+})
+
+test('no model and no class → still the honest platform default', () => {
+  const r = resolveMileageFrom(NORMS, null, null)
+  assert.equal(r.basis, 'default')
+  assert.equal(r.mileage_kmpl, 3.5)
+})
+
+test('diesel: the national reference price is used when the caller does not override it', () => {
+  const lookup = resolveMileageFrom(NORMS, null, 'HCV')
+  const withRef = computeFuel({ distanceKm: 100, lookup, dieselPriceDefault: 94, overridden: [] })
+  assert.equal(withRef.diesel_price_inr, 94)
+  const overridden = computeFuel({ distanceKm: 100, lookup, dieselPriceOverride: 88, dieselPriceDefault: 94, overridden: ['diesel_price'] })
+  assert.equal(overridden.diesel_price_inr, 88)
+  const envOnly = computeFuel({ distanceKm: 100, lookup, overridden: [] })
+  assert.equal(envOnly.diesel_price_inr, 90) // DIESEL_PRICE_INR set at the top of this file
+})

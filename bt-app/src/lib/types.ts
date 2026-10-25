@@ -848,6 +848,10 @@ export type PriceQuoteInput = {
    * form always sends it.
    */
   booking_type?: BookingType
+  /** The chosen truck, when there is one — refines the cost floor (otherwise a new BS6 truck is assumed). */
+  model_category?: string
+  emission_norm?: 'bs6' | 'bs4'
+  truck_age?: number
 }
 
 export type PriceQuoteBreakdown = {

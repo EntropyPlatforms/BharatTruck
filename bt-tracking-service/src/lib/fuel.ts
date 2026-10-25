@@ -97,8 +97,9 @@ function pickByNorm(row: NormRow, emissionNorm: string | null): { kmpl: number; 
  */
 export async function resolveMileage(
   vehicle: { model_category: string | null; emission_norm: string | null } | null,
+  classHint: VehicleClass | null = null,
 ): Promise<MileageLookup> {
-  return resolveMileageFrom(await loadNorms(), vehicle)
+  return resolveMileageFrom(await loadNorms(), vehicle, classHint)
 }
 
 /**
@@ -121,6 +122,8 @@ export async function loadNorms(): Promise<NormRow[]> {
 export function resolveMileageFrom(
   norms: NormRow[],
   vehicle: { model_category: string | null; emission_norm: string | null } | null,
+  /** A class known from elsewhere (the load's quote, or the caller) — reaches tier 2 when the truck has no model on record. */
+  classHint: VehicleClass | null = null,
 ): MileageLookup {
   const modelCategory = vehicle?.model_category ?? null
   const emissionNorm = vehicle?.emission_norm ?? null
@@ -146,7 +149,7 @@ export function resolveMileageFrom(
 
   // Tier 2 — average across the class. Reached when the truck has no model_category (solo
   // drivers register an RC number and little else) or its category is not in the norms table.
-  const inferredClass = inferClassFromCategory(modelCategory)
+  const inferredClass = inferClassFromCategory(modelCategory) ?? classHint
   if (inferredClass) {
     const picked = norms
       .filter((n) => n.vehicle_class === inferredClass)
@@ -226,12 +229,14 @@ export function computeFuel(params: {
   lookup: MileageLookup
   mileageOverride?: number
   dieselPriceOverride?: number
+  /** The reference price when the caller did not override it (national DB row); env otherwise. */
+  dieselPriceDefault?: number
   overridden: string[]
 }): FuelEstimate {
-  const { distanceKm, lookup, mileageOverride, dieselPriceOverride, overridden } = params
+  const { distanceKm, lookup, mileageOverride, dieselPriceOverride, dieselPriceDefault, overridden } = params
 
   const mileage = mileageOverride ?? lookup.mileage_kmpl
-  const dieselPrice = dieselPriceOverride ?? DEFAULT_DIESEL_PRICE_INR
+  const dieselPrice = dieselPriceOverride ?? dieselPriceDefault ?? DEFAULT_DIESEL_PRICE_INR
 
   const litres = mileage > 0 ? distanceKm / mileage : 0
   const dieselCost = litres * dieselPrice

@@ -64,6 +64,17 @@ const LOAD_TYPES: { value: PriceQuoteLoadType; label: string }[] = [
   { value: 'heavy_machinery', label: 'Heavy machinery' },
 ]
 
+/** The quote fields a chosen truck contributes; empty when no truck or nothing on record. */
+function truckQuoteFields(t: { model_category: string | null; emission_norm: string | null; manufacture_year: number | null } | null | undefined) {
+  if (!t) return {}
+  const out: { model_category?: string; emission_norm?: 'bs6' | 'bs4'; truck_age?: number } = {}
+  if (t.model_category) out.model_category = t.model_category
+  const norm = (t.emission_norm ?? '').toLowerCase()
+  if (norm === 'bs6' || norm === 'bs4') out.emission_norm = norm
+  if (t.manufacture_year && t.manufacture_year > 1980) out.truck_age = Math.max(1, new Date().getFullYear() - t.manufacture_year)
+  return out
+}
+
 const VEHICLE_TYPES: { value: PriceQuoteVehicleType; label: string }[] = [
   { value: 'mini_truck', label: 'Mini truck' },
   { value: 'lcv', label: 'LCV' },
@@ -215,6 +226,9 @@ export default function PostLoadPage() {
         load_type: loadType,
         weight_kg: weight,
         booking_type: bookingType,
+        // The chosen truck, when one is picked: the cost floor then prices THAT truck instead of
+        // assuming a new BS6 (18 Oct audit). Unknown fields are simply left out.
+        ...truckQuoteFields(fleetPair.truck),
       })
       setQuote(q)
       setQuoteStale(false)
@@ -647,7 +661,7 @@ export default function PostLoadPage() {
                 {isDistributor ? (
                   <div>
                     <p className={LABEL}>Carry it with your fleet</p>
-                    <FleetPairPicker value={fleetPair} onChange={setFleetPair} loadWeightKg={parseFloat(weightKg) || null} />
+                    <FleetPairPicker value={fleetPair} onChange={(next) => { if (next.vehicleId !== fleetPair.vehicleId) invalidateQuote('the truck'); setFleetPair(next) }} loadWeightKg={parseFloat(weightKg) || null} />
                   </div>
                 ) : (
                   <Field id="target_driver_id" label="Target driver ID">

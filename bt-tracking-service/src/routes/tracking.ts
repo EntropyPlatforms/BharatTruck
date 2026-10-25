@@ -29,6 +29,9 @@ import {
   getTelemetry,
   listGeofenceEvents,
   getVehicleForFuel,
+  getSoloVehicleForFuel,
+  getQuotedVehicleClass,
+  getNationalDieselPrice,
   type GeofenceEventRow,
 } from '../lib/repository.js'
 import { decodePolyline, distanceToPolylineMeters, haversineMeters } from '../lib/geo.js'
@@ -373,14 +376,22 @@ export async function trackingRoutes(app: FastifyInstance) {
 
     const distance = await resolveFuelDistance(bookingId, q.data.distance_km)
     const fleetCols = await getBookingFleetColumns(bookingId)
-    const vehicle = await getVehicleForFuel(fleetCols.vehicle_id)
-    const lookup = await resolveMileage(vehicle)
+    // Fleet trips name the truck on the booking; a solo trip's truck is the driver's own.
+    const vehicle = (await getVehicleForFuel(fleetCols.vehicle_id))
+      ?? (fleetCols.vehicle_id ? null : await getSoloVehicleForFuel(booking.driver_id ?? null))
+    // Class for the tier-2 average when the truck has no model on record: the caller's explicit
+    // vehicle_class (previously accepted and ignored), else the class the load was quoted for.
+    const quotedClass = q.data.vehicle_class ?? (await getQuotedVehicleClass(bookingId))
+    const classHint = (['SCV', 'LCV', 'MCV', 'HCV'] as const).find((c) => c === quotedClass) ?? null
+    const lookup = await resolveMileage(vehicle, classHint)
+    const dieselPriceDefault = (await getNationalDieselPrice()) ?? undefined
 
     const estimate = computeFuel({
       distanceKm: distance.km,
       lookup,
       mileageOverride: q.data.mileage_kmpl,
       dieselPriceOverride: q.data.diesel_price,
+      dieselPriceDefault,
       overridden,
     })
 
