@@ -205,3 +205,184 @@ export async function listOpenAlertsForUser(userId: string, limit = 50): Promise
   }
   return (data ?? []) as unknown as AlertRow[]
 }
+
+// ── Wave 1 facts (rules-wave1.ts) ────────────────────────────────────────────
+
+/** The standing (active, newest recorded) e-way bill per booking. */
+export async function standingEwbByBooking(bookingIds: string[]): Promise<Map<string, { ewb_number: string | null; valid_upto: string }>> {
+  const out = new Map<string, { ewb_number: string | null; valid_upto: string }>()
+  for (const ids of chunks(unique(bookingIds))) {
+    const { data, error } = await supabase
+      .from('eway_bill_records')
+      .select('booking_id, ewb_number, valid_upto, recorded_at')
+      .in('booking_id', ids)
+      .eq('status', 'active')
+      .order('recorded_at', { ascending: false })
+    if (error) throw new Error(`eway_bill_records select failed: ${error.message}`)
+    for (const r of (data ?? []) as Array<{ booking_id: string; ewb_number: string | null; valid_upto: string }>) {
+      if (!out.has(r.booking_id)) out.set(r.booking_id, { ewb_number: r.ewb_number, valid_upto: r.valid_upto })
+    }
+  }
+  return out
+}
+
+/**
+ * How far from the drop each delivery happened: the distance recorded when the delivery code
+ * was requested (pod_audit_log otp_gate_*, detail.distance_m) and on the truck-at-drop photo
+ * (pod_evidence kind 'vehicle'). The largest wins.
+ */
+export async function deliveryDistances(bookingIds: string[]): Promise<Map<string, { distanceM: number; source: 'code_issue' | 'delivery_photo' }>> {
+  const out = new Map<string, { distanceM: number; source: 'code_issue' | 'delivery_photo' }>()
+  const keep = (id: string, d: number, source: 'code_issue' | 'delivery_photo') => {
+    if (!Number.isFinite(d)) return
+    const cur = out.get(id)
+    if (!cur || d > cur.distanceM) out.set(id, { distanceM: d, source })
+  }
+  for (const ids of chunks(unique(bookingIds))) {
+    const { data: logs, error: e1 } = await supabase
+      .from('pod_audit_log')
+      .select('booking_id, action, detail')
+      .in('booking_id', ids)
+      .in('action', ['otp_gate_pass', 'otp_gate_block', 'otp_gate_degraded'])
+    if (e1) throw new Error(`pod_audit_log select failed: ${e1.message}`)
+    for (const r of (logs ?? []) as Array<{ booking_id: string; detail: { distance_m?: number | null } | null }>) {
+      if (r.detail?.distance_m != null) keep(r.booking_id, Number(r.detail.distance_m), 'code_issue')
+    }
+    const { data: photos, error: e2 } = await supabase
+      .from('pod_evidence')
+      .select('booking_id, geofence_distance_m')
+      .in('booking_id', ids)
+      .eq('kind', 'vehicle')
+    if (e2) throw new Error(`pod_evidence select failed: ${e2.message}`)
+    for (const r of (photos ?? []) as Array<{ booking_id: string; geofence_distance_m: number | string | null }>) {
+      if (r.geofence_distance_m != null) keep(r.booking_id, Number(r.geofence_distance_m), 'delivery_photo')
+    }
+  }
+  return out
+}
+
+/** Bookings with a live (unreleased) vehicle assignment. */
+export async function liveAssignmentBookings(bookingIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (const ids of chunks(unique(bookingIds))) {
+    const { data, error } = await supabase.from('vehicle_assignments').select('booking_id').in('booking_id', ids).is('released_at', null)
+    if (error) throw new Error(`vehicle_assignments select failed: ${error.message}`)
+    for (const r of (data ?? []) as Array<{ booking_id: string }>) out.add(r.booking_id)
+  }
+  return out
+}
+
+/** The latest drop-fence event per booking (written by bt-tracking-service's evaluator). */
+export async function latestDropEvents(bookingIds: string[]): Promise<Map<string, { event: string; occurred_at: string }>> {
+  const out = new Map<string, { event: string; occurred_at: string }>()
+  for (const ids of chunks(unique(bookingIds))) {
+    const { data, error } = await supabase
+      .from('geofence_events')
+      .select('booking_id, event, occurred_at')
+      .in('booking_id', ids)
+      .eq('kind', 'drop')
+      .order('occurred_at', { ascending: false })
+    if (error) throw new Error(`geofence_events select failed: ${error.message}`)
+    for (const r of (data ?? []) as Array<{ booking_id: string; event: string; occurred_at: string }>) {
+      if (!out.has(r.booking_id)) out.set(r.booking_id, { event: r.event, occurred_at: r.occurred_at })
+    }
+  }
+  return out
+}
+
+/** Damage reports at delivery: booking id to when and how much. */
+export async function damageReports(): Promise<Map<string, { reported_at: string; delta: number | null; unit: string | null }>> {
+  const { data, error } = await supabase.from('pod_discrepancies').select('booking_id, created_at, delta, quantity_unit').eq('reason', 'damage')
+  if (error) throw new Error(`pod_discrepancies select failed: ${error.message}`)
+  const out = new Map<string, { reported_at: string; delta: number | null; unit: string | null }>()
+  for (const r of (data ?? []) as Array<{ booking_id: string; created_at: string; delta: number | string | null; quantity_unit: string | null }>) {
+    out.set(r.booking_id, { reported_at: r.created_at, delta: r.delta == null ? null : Number(r.delta), unit: r.quantity_unit })
+  }
+  return out
+}
+
+export async function bookingFactsByIds(ids: string[]): Promise<BookingFact[]> {
+  const out: BookingFact[] = []
+  for (const part of chunks(unique(ids))) {
+    const { data, error } = await supabase.from('bookings').select(BOOKING_FACT_COLUMNS).in('id', part)
+    if (error) throw new Error(`bookings select failed: ${error.message}`)
+    out.push(...((data ?? []) as unknown as BookingFact[]))
+  }
+  return out
+}
+
+/** When the driver marked each delivery done (pod_state.asserted_at). */
+export async function assertedAtByBooking(bookingIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const ids of chunks(unique(bookingIds))) {
+    const { data, error } = await supabase.from('pod_state').select('booking_id, asserted_at').in('booking_id', ids)
+    if (error) throw new Error(`pod_state select failed: ${error.message}`)
+    for (const r of (data ?? []) as Array<{ booking_id: string; asserted_at: string | null }>) if (r.asserted_at) out.set(r.booking_id, r.asserted_at)
+  }
+  return out
+}
+
+/** Open loads with what decides "open to bids", plus their live bid count. */
+export async function openLoadsWithBids(): Promise<Array<{ booking: BookingFact; createdAt: string; openToBids: boolean; bidCount: number }>> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select(BOOKING_FACT_COLUMNS + ', created_at, booking_type, target_driver_id')
+    .in('status', ['pending', 'negotiating'])
+  if (error) throw new Error(`bookings select failed: ${error.message}`)
+  const rows = (data ?? []) as unknown as Array<BookingFact & { created_at: string; booking_type: string | null; target_driver_id: string | null }>
+  const counts = new Map<string, number>()
+  for (const ids of chunks(rows.map((r) => r.id))) {
+    const { data: q, error: qe } = await supabase.from('quotes').select('booking_id, status').in('booking_id', ids)
+    if (qe) throw new Error(`quotes select failed: ${qe.message}`)
+    for (const r of (q ?? []) as Array<{ booking_id: string; status: string }>) {
+      if (!['withdrawn', 'expired', 'rejected'].includes(r.status)) counts.set(r.booking_id, (counts.get(r.booking_id) ?? 0) + 1)
+    }
+  }
+  return rows.map((r) => ({
+    booking: r,
+    createdAt: r.created_at,
+    // An auction is open to every carrier; a direct booking sent to one named driver is not.
+    openToBids: r.booking_type === 'auction' || !r.target_driver_id,
+    bidCount: counts.get(r.id) ?? 0,
+  }))
+}
+
+/** Active trucks with their last working day and whether they are on a trip now. */
+export async function truckActivity(): Promise<Array<{ vehicle_id: string; rc_number: string | null; fleet_owner_id: string | null; driver_id: string | null; lastActiveAt: string; busy: boolean }>> {
+  const { data: vs, error } = await supabase.from('vehicles').select('id, rc_number, fleet_owner_id, driver_id, is_active, created_at')
+  if (error) throw new Error(`vehicles select failed: ${error.message}`)
+  const vehicles = ((vs ?? []) as Array<{ id: string; rc_number: string | null; fleet_owner_id: string | null; driver_id: string | null; is_active: boolean | null; created_at: string }>)
+    .filter((v) => v.is_active !== false && (v.fleet_owner_id || v.driver_id))
+  const OPEN = ['accepted', 'in_transit', 'delivery_asserted']
+  const WORKED = ['accepted', 'in_transit', 'delivery_asserted', 'completed', 'paid']
+  const last = new Map<string, string>()
+  const busy = new Set<string>()
+  const note = (vid: string, at: string, status: string) => {
+    if (OPEN.includes(status)) busy.add(vid)
+    const seen = last.get(vid)
+    if (!seen || at > seen) last.set(vid, at)
+  }
+  // Fleet trucks are named on the booking; a solo truck's trips are its driver's solo bookings.
+  const fleetIds = vehicles.filter((v) => v.fleet_owner_id).map((v) => v.id)
+  for (const ids of chunks(fleetIds)) {
+    const { data, error: e } = await supabase.from('bookings').select('vehicle_id, status, updated_at').in('vehicle_id', ids).in('status', WORKED)
+    if (e) throw new Error(`bookings select failed: ${e.message}`)
+    for (const r of (data ?? []) as Array<{ vehicle_id: string; status: string; updated_at: string }>) note(r.vehicle_id, r.updated_at, r.status)
+    const { data: live, error: le } = await supabase.from('vehicle_assignments').select('vehicle_id').in('vehicle_id', ids).is('released_at', null)
+    if (le) throw new Error(`vehicle_assignments select failed: ${le.message}`)
+    for (const r of (live ?? []) as Array<{ vehicle_id: string }>) busy.add(r.vehicle_id)
+  }
+  const soloByDriver = new Map(vehicles.filter((v) => !v.fleet_owner_id && v.driver_id).map((v) => [v.driver_id as string, v.id]))
+  for (const ids of chunks([...soloByDriver.keys()])) {
+    const { data, error: e } = await supabase.from('bookings').select('driver_id, status, updated_at').in('driver_id', ids).is('fleet_owner_id', null).in('status', WORKED)
+    if (e) throw new Error(`bookings select failed: ${e.message}`)
+    for (const r of (data ?? []) as Array<{ driver_id: string; status: string; updated_at: string }>) {
+      const vid = soloByDriver.get(r.driver_id)
+      if (vid) note(vid, r.updated_at, r.status)
+    }
+  }
+  return vehicles.map((v) => ({
+    vehicle_id: v.id, rc_number: v.rc_number, fleet_owner_id: v.fleet_owner_id, driver_id: v.fleet_owner_id ? null : v.driver_id,
+    lastActiveAt: last.get(v.id) ?? v.created_at, busy: busy.has(v.id),
+  }))
+}

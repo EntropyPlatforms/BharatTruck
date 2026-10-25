@@ -17,7 +17,11 @@ export type AlertSeverity = 'critical' | 'warning' | 'info'
  */
 export type AlertPersona = 'fleet' | 'carrier' | 'driver' | 'shipper'
 
-export type AlertKind = 'gps_silent' | 'trip_not_started' | 'unpaid_overdue' | 'licence_expiring'
+export type AlertKind =
+  | 'gps_silent' | 'trip_not_started' | 'unpaid_overdue' | 'licence_expiring'
+  // Wave 1 of the ranked new alerts (rules-wave1.ts)
+  | 'ewb_expiring' | 'delivered_away' | 'documents_not_ready' | 'pickup_no_truck' | 'at_drop_not_delivered'
+  | 'damage_reported' | 'delivery_unconfirmed' | 'no_bids' | 'truck_idle'
 
 export type AlertSubjectType = 'booking' | 'vehicle' | 'driver'
 
@@ -50,8 +54,10 @@ export type AlertRow = AlertDraft & {
 export type SweepCadence = 'frequent' | 'daily'
 
 export const KINDS_BY_CADENCE: Record<SweepCadence, AlertKind[]> = {
-  frequent: ['gps_silent'],
-  daily: ['trip_not_started', 'unpaid_overdue', 'licence_expiring'],
+  // Within the hour: a lapsing e-way bill, a truck waiting at the drop, a fresh damage report.
+  frequent: ['gps_silent', 'ewb_expiring', 'at_drop_not_delivered', 'delivered_away', 'damage_reported', 'no_bids'],
+  // By the day (08:00 IST): tomorrow's pickups, unconfirmed deliveries, idle trucks.
+  daily: ['trip_not_started', 'unpaid_overdue', 'licence_expiring', 'documents_not_ready', 'pickup_no_truck', 'delivery_unconfirmed', 'truck_idle'],
 }
 
 export const SEVERITY_RANK: Record<AlertSeverity, number> = { info: 0, warning: 1, critical: 2 }

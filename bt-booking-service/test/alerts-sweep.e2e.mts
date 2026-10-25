@@ -121,7 +121,8 @@ async function main() {
   let r = data(await sweep('frequent'))
   check('first frequent sweep opens 2 (owner + hired driver of the silent fleet trip)', r.opened === 2 && open().length === 2, JSON.stringify(r))
   check('the solo trip with a fresh fix raises nothing', !fake.store.alerts.some((a) => a.subject_id === B_SOLO_TRANSIT))
-  check('frequent sweeps evaluate GPS only', JSON.stringify(r.evaluated_kinds) === '["gps_silent"]', JSON.stringify(r.evaluated_kinds))
+  const { KINDS_BY_CADENCE } = await import('../src/lib/alerts/types.js')
+  check('frequent sweeps evaluate exactly the frequent kinds (GPS first)', JSON.stringify(r.evaluated_kinds) === JSON.stringify(KINDS_BY_CADENCE.frequent) && r.evaluated_kinds[0] === 'gps_silent', JSON.stringify(r.evaluated_kinds))
   r = data(await sweep('frequent'))
   check('a re-run refreshes instead of duplicating', r.opened === 0 && r.refreshed === 2 && fake.store.alerts.length === 2, JSON.stringify(r))
 

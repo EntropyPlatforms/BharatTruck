@@ -82,13 +82,17 @@ function alertHref(item: FeedItem): string {
     case 'shipper':
       // An overdue payment opens the Payment tab, like the payment-due row it replaces.
       if (id && item.alert?.kind === 'unpaid_overdue') return `/loads/${id}?tab=payment`
+      // Missing papers and a lapsing e-way bill are fixed on the Documents tab.
+      if (id && (item.alert?.kind === 'documents_not_ready' || item.alert?.kind === 'ewb_expiring')) return `/loads/${id}?tab=documents`
       return id ? `/loads/${id}` : '/loads'
     case 'driver':
       if (licence) return '/driver-profile'
       return id ? `/my-trips/${id}` : '/my-trips'
     case 'carrier':
+      if (item.alert?.kind === 'truck_idle') return '/auctions' // the load board ("Find work")
       return id ? `/my-trips/${id}` : '/my-trips'
     case 'fleet':
+      if (item.alert?.kind === 'truck_idle') return '/vehicles'
       return licence ? '/drivers' : '/trips'
     default:
       return '/home'

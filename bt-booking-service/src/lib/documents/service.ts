@@ -802,6 +802,32 @@ export async function ocrDocument(
   return { extraction_id: extractionId, kind, fields }
 }
 
+/**
+ * Which pickup documents are still missing — the SAME rules as assertPickupDocumentsReady (the
+ * Start trip gate) plus the advisory LR, as booleans for the "documents not ready" alert, so the
+ * alert and the gate can never disagree about what a truck needs.
+ */
+export async function pickupDocumentGaps(bookingId: string): Promise<{ missingInvoice: boolean; missingEwb: boolean; missingLr: boolean }> {
+  const [invoice, lr] = await Promise.all([docs.getFreightInvoice(bookingId), docs.getLorryReceipt(bookingId)])
+  const missingLr = !lr
+  if (!invoice) return { missingInvoice: true, missingEwb: false, missingLr }
+  const ewbNeed = ewayBillRequirement({
+    consignmentValueInr: Number(invoice.consignment_value_inr),
+    fromStateCode: stateCodeOfGstin(invoice.supplier_gstin),
+    toStateCode:
+      invoice.shipped_to_state_code ??
+      stateCodeOfGstin(invoice.shipped_to_gstin) ??
+      invoice.billed_to_state_code ??
+      stateCodeOfGstin(invoice.billed_to_gstin) ??
+      invoice.place_of_supply_code ??
+      null,
+  })
+  if (ewbNeed.required === false) return { missingInvoice: false, missingEwb: false, missingLr }
+  const standing = standingEwayBill(await docs.listEwayBills(bookingId))
+  const missingEwb = !standing || !standing.document_uri || ewayBillExpiry(standing.valid_upto).state === 'expired'
+  return { missingInvoice: false, missingEwb, missingLr }
+}
+
 // FB-03 hard gate on accepted → in_transit: tax invoice always; e-way only when
 // ewayBillRequirement.required !== false. Fail closed when the helper declines
 // (required === null — unknown ends / intra-state): safer than letting a truck
