@@ -1,3 +1,4 @@
+import { KM_PER_DAY, TOLL_PER_KM as SHARED_TOLL_PER_KM } from './cost-constants.js'
 import { getSupabase } from './supabase.js'
 
 // -----------------------------------------------------------
@@ -82,7 +83,7 @@ export type ConsumablePrices = {
 /** crew = trip_days × crew_monthly / WORKING_DAYS_PER_MONTH. Reproduces Crew ₹ exactly. */
 export const WORKING_DAYS_PER_MONTH = 26
 /** trip_days = ceil(distance_km / AVG_KM_PER_DAY). Reproduces Trip Days exactly. */
-export const AVG_KM_PER_DAY = 300
+export const AVG_KM_PER_DAY = KM_PER_DAY // cost-constants.ts — shared by every price path
 /** floor = round(total_direct × FLOOR_MARKUP). Matches the workbook "Floor ₹ (×1.07)". */
 export const FLOOR_MARKUP = 1.07
 
@@ -102,7 +103,7 @@ const ALLOWANCE_PER_DAY_WITH_CREW_INR = 320
 // Route/NH instance variance is not modelled in P0 (the shipper flow has no NH);
 // resolveCostFloor accepts a toll_per_km override for P1 when tracking supplies
 // the real route.
-const TOLL_PER_KM: Record<CostVehicleClass, number> = { SCV: 1.20, LCV: 1.60, MCV: 1.70, HCV: 1.80 }
+const TOLL_PER_KM: Record<CostVehicleClass, number> = SHARED_TOLL_PER_KM // cost-constants.ts
 
 // Handling ₹ per tonne by load_type — a rock-solid per-tonne constant in the
 // workbook (General 30, Fragile 300, Hazmat 180, Reefer 144, ODC ~852). The API

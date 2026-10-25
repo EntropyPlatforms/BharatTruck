@@ -1,3 +1,4 @@
+import { refreshDieselPrices } from './lib/diesel.js'
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
@@ -33,6 +34,8 @@ async function bootstrap() {
     await internal.register(internalPricingRoutes, { prefix: '/internal' })
   })
 
+  // Diesel reference prices from the database (diesel.ts); background, never blocks start-up.
+  void refreshDieselPrices()
   await app.listen({ port: Number(process.env.PORT ?? 3003), host: '0.0.0.0' })
 }
 

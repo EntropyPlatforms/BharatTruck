@@ -1,3 +1,5 @@
+import { QUOTE_KM_PER_DAY } from './cost-constants.js'
+import { dieselPriceInr } from './diesel.js'
 // -----------------------------------------------------------
 // CTO cost-breakdown engine (PRD Appendix A — the deterministic MVP
 // price anchor). Given (vehicle_class, distance) it returns a
@@ -34,14 +36,13 @@ export const HANDLING_BASE: Record<VehicleClass, number> = { SCV: 300, LCV: 500,
 
 // Driver wage — per-day, prorated over an average daily distance. ASSUMPTIONS (Q9).
 export const DRIVER_WAGE_PER_DAY = 1200
-export const AVG_KM_PER_DAY = 400
+// The quote's running day — see QUOTE_KM_PER_DAY in cost-constants.ts for why it is not the
+// cost floor's 300.
+export const AVG_KM_PER_DAY = QUOTE_KM_PER_DAY
 
-// Editable diesel price (INR/litre). Env-overridable; default 90 (locked in the
-// tracking CONTRACT as DIESEL_PRICE_INR).
-export function dieselPriceInr(): number {
-  const v = Number(process.env.DIESEL_PRICE_INR)
-  return Number.isFinite(v) && v > 0 ? v : 90
-}
+// Diesel ₹/litre: the same national reference row the cost floor uses (diesel.ts), with the
+// DIESEL_PRICE_INR env only as the fallback before the first database load.
+export { dieselPriceInr } from './diesel.js'
 
 // Map the legacy /quote `vehicle_type` enum → CTO cost class.
 // ASSUMPTIONS (Q9): mini_truck→SCV; trailer→HCV (trailer is absent from the

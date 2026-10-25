@@ -490,6 +490,47 @@ export async function getVehicleFleetOwner(vehicleId: string | null): Promise<st
   return (data?.fleet_owner_id as string | null) ?? null
 }
 
+/**
+ * A solo trip never sets bookings.vehicle_id, so the fuel estimate used to skip straight to the
+ * worst-case default. The solo driver's own truck (vehicles.driver_id, no fleet owner) is the truck.
+ */
+export async function getSoloVehicleForFuel(
+  driverId: string | null,
+): Promise<{ model_category: string | null; emission_norm: string | null } | null> {
+  if (!driverId) return null
+  const { data, error } = await supabase
+    .from('vehicles')
+    .select('model_category, emission_norm')
+    .eq('driver_id', driverId)
+    .is('fleet_owner_id', null)
+    .limit(1)
+    .maybeSingle()
+  if (error) return null
+  return (data as { model_category: string | null; emission_norm: string | null } | null) ?? null
+}
+
+/** The vehicle class the load was quoted for (price_quotes consumed by this booking), if any. */
+export async function getQuotedVehicleClass(bookingId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('price_quotes')
+    .select('vehicle_class')
+    .eq('consumed_by_booking_id', bookingId)
+    .limit(1)
+    .maybeSingle()
+  if (error) return null
+  return ((data as { vehicle_class?: string | null } | null)?.vehicle_class ?? null)
+}
+
+/** The national diesel reference (fleet_cost_settings, fleet_owner_id IS NULL) — the row pricing uses. Cached 6 h. */
+let dieselCache: { price: number | null; at: number } = { price: null, at: 0 }
+export async function getNationalDieselPrice(): Promise<number | null> {
+  if (Date.now() - dieselCache.at < 6 * 3600_000) return dieselCache.price
+  const { data, error } = await supabase.from('fleet_cost_settings').select('diesel_price_inr').is('fleet_owner_id', null).maybeSingle()
+  const v = error ? NaN : Number((data as { diesel_price_inr?: unknown } | null)?.diesel_price_inr)
+  dieselCache = { price: Number.isFinite(v) && v > 0 ? v : null, at: Date.now() }
+  return dieselCache.price
+}
+
 export async function getVehicleForFuel(
   vehicleId: string | null,
 ): Promise<{ model_category: string | null; emission_norm: string | null } | null> {
