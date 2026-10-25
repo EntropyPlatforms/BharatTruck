@@ -150,7 +150,7 @@ export function GenerateEwayBillPanel({ bookingId, onDone, onClose }: { bookingI
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [f, setF] = useState({
     document_number: '', document_date: new Date().toISOString().slice(0, 10), consignee_name: '', consignee_gstin: '',
-    hsn_code: '', product_name: '', taxable_value_inr: '', gst_rate: '5', total_invoice_value_inr: '', distance_km: '',
+    hsn_code: '', product_name: '', taxable_value_inr: '', gst_rate: '', total_invoice_value_inr: '', distance_km: '',
     vehicle_number: '', transporter_id: '', from_place: '', to_place: '',
   })
   const [busy, setBusy] = useState(false)
@@ -195,6 +195,8 @@ export function GenerateEwayBillPanel({ bookingId, onDone, onClose }: { bookingI
           transporter_id: d.transporter_id ?? p.transporter_id,
           from_place: d.from_place ?? p.from_place,
           to_place: d.to_place ?? p.to_place,
+          distance_km: d.distance_km != null ? String(d.distance_km) : p.distance_km,
+          gst_rate: d.gst_rate != null ? String(d.gst_rate) : p.gst_rate,
         }))
       })
       .catch((e) => { if (!cancelled) setLoadErr(errText(e, 'Could not prepare the e-way bill.')) })
@@ -212,6 +214,7 @@ export function GenerateEwayBillPanel({ bookingId, onDone, onClose }: { bookingI
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (f.gst_rate === '') { setErr('Choose the GST rate on your invoice.'); return }
     const cg = f.consignee_gstin.trim().toUpperCase()
     if (cg && gstinProblem(cg)) { setErr(`Consignee GSTIN: ${gstinProblem(cg)}`); return }
     if (!f.vehicle_number.trim() && !f.transporter_id.trim()) { setErr('Give the vehicle number, or the transporter id if the transporter will enter the vehicle.'); return }
@@ -273,6 +276,7 @@ export function GenerateEwayBillPanel({ bookingId, onDone, onClose }: { bookingI
         <Field id="g_taxable" label="Taxable value (₹)"><input id="g_taxable" inputMode="decimal" value={f.taxable_value_inr} onChange={(e) => set('taxable_value_inr', e.target.value.replace(/[^\d.]/g, ''))} className={cx(INPUT, 'h-11 tabular-nums')} /></Field>
         <Field id="g_rate" label="GST rate">
           <select id="g_rate" value={f.gst_rate} onChange={(e) => set('gst_rate', e.target.value)} className={cx(SELECT, 'h-11')}>
+            <option value="" disabled>Choose…</option>
             {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
           </select>
         </Field>

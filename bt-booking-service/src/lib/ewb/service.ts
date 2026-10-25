@@ -186,6 +186,31 @@ export type GenerateDefaults = {
   to_place: string | null
   inter_state: boolean | null
   weight_kg: number | null
+  /** Road km: the trip's routed distance, else the quote's. Null = type it (it used to be always blank). */
+  distance_km: number | null
+  /** The rate on the shipper's own tax invoice; null = choose one (it used to default to 5%). */
+  gst_rate: 0 | 5 | 12 | 18 | 28 | null
+}
+
+/** The standard GST rate a tax invoice was raised at, or null when it is not one of them. Exported for tests. */
+export function invoiceGstRate(inv: { taxable_value_inr: string | number; cgst_inr?: string | number | null; sgst_inr?: string | number | null; igst_inr?: string | number | null; utgst_inr?: string | number | null } | null): 0 | 5 | 12 | 18 | 28 | null {
+  if (!inv) return null
+  const taxable = Number(inv.taxable_value_inr)
+  if (!(taxable > 0)) return null
+  const tax = [inv.cgst_inr, inv.sgst_inr, inv.igst_inr, inv.utgst_inr].reduce<number>((s, v) => s + (Number(v) || 0), 0)
+  const pct = (tax / taxable) * 100
+  const hit = ([0, 5, 12, 18, 28] as const).find((r) => Math.abs(pct - r) < 0.15)
+  return hit ?? null
+}
+
+/** Road km for the e-way bill: the routed distance, else the quote's. Exported for tests. */
+export async function tripDistanceKm(bookingId: string): Promise<number | null> {
+  const { data: route } = await supabase.from('trip_routes').select('distance_m').eq('booking_id', bookingId).maybeSingle()
+  const m = Number((route as { distance_m?: number } | null)?.distance_m)
+  if (m > 0) return Math.round(m / 1000)
+  const { data: quote } = await supabase.from('price_quotes').select('distance_km').eq('consumed_by_booking_id', bookingId).limit(1).maybeSingle()
+  const km = Number((quote as { distance_km?: number | string } | null)?.distance_km)
+  return km > 0 ? Math.round(km) : null
 }
 
 const firstSegment = (addr: string | null | undefined) => (addr ?? '').split(',').map((s) => s.trim()).filter(Boolean).slice(-3, -2)[0] ?? (addr ?? '').split(',')[0]?.trim() ?? null
@@ -196,11 +221,12 @@ export async function generateDefaults(bookingId: string, actor: AuthenticatedUs
   // Columns the LR row carries beyond the typed subset (repository.ts types only what its own
   // callers read).
   type LrExtra = { consignee_gstin?: string | null; said_to_contain?: string | null; vehicle_number?: string | null; origin_place?: string | null; destination_place?: string | null; invoice_number?: string | null; invoice_value_inr?: string | number | null; issued_at?: string }
-  const [lrRow, invoice, view, shipper] = await Promise.all([
+  const [lrRow, invoice, view, shipper, distanceKm] = await Promise.all([
     docs.getLorryReceipt(bookingId),
     docs.getFreightInvoice(bookingId),
     creds.getCredentialsView(actor.userId),
     supabase.from('users').select('gstin').eq('id', booking.shipper_id).maybeSingle(),
+    tripDistanceKm(bookingId).catch(() => null),
   ])
   const lr = lrRow as (typeof lrRow & LrExtra) | null
   const fleetGstin = booking.fleet_owner_id
@@ -223,6 +249,8 @@ export async function generateDefaults(bookingId: string, actor: AuthenticatedUs
     to_place: lr?.destination_place ?? firstSegment(booking.destination_address),
     inter_state: b.source_state_code && b.dest_state_code ? b.source_state_code !== b.dest_state_code : null,
     weight_kg: booking.weight_kg != null ? Number(booking.weight_kg) : null,
+    distance_km: distanceKm,
+    gst_rate: invoiceGstRate(invoice as never),
   }
 }
 

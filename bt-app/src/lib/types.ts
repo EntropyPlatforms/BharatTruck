@@ -29,6 +29,11 @@ export type AuthUser = {
   role: 'shipper' | 'driver' | 'admin' | 'fleet_owner'
   /** users.gstin — required before posting a load (FB-04). */
   gstin: string | null
+  /** Billing address (shippers' invoices). */
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  pincode?: string | null
   email_verified: boolean
   created_at: string
 }
@@ -1694,6 +1699,8 @@ export type EwayGenerateDefaults = {
   to_place: string | null
   inter_state: boolean | null
   weight_kg: number | null
+  distance_km?: number | null
+  gst_rate?: 0 | 5 | 12 | 18 | 28 | null
 }
 
 export type GenerateEwayBillInput = {

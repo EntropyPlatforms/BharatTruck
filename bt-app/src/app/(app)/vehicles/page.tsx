@@ -99,17 +99,18 @@ type FormState = {
   body_type: string
   axle_config: string
   current_odometer_km: string
+  rc_expiry: string
 }
 
 const EMPTY_FORM: FormState = {
   rc_number: '', maker_model: '', model_category: '', emission_norm: '',
   manufacture_year: '', capacity_tons: '', volume_cuft: '', body_type: '',
-  axle_config: '', current_odometer_km: '',
+  axle_config: '', current_odometer_km: '', rc_expiry: '',
 }
 
 const FIELD_KEYS: (keyof FormState)[] = [
   'rc_number', 'maker_model', 'model_category', 'emission_norm', 'manufacture_year',
-  'capacity_tons', 'volume_cuft', 'body_type', 'axle_config', 'current_odometer_km',
+  'capacity_tons', 'volume_cuft', 'body_type', 'axle_config', 'current_odometer_km', 'rc_expiry',
 ]
 
 /**
@@ -693,6 +694,9 @@ function AddTruckDialog({
     const odometer = toInt(form.current_odometer_km)
     if (odometer !== null) body.current_odometer_km = odometer
 
+    // RC validity (YYYY-MM-DD). Without it the RC-expiry warning can never fire for this truck.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(form.rc_expiry)) body.rc_expiry = form.rc_expiry
+
     const bodyType = oneOf(BODY_TYPES, form.body_type)
     if (bodyType !== null) body.body_type = bodyType
 
@@ -843,6 +847,16 @@ function AddTruckDialog({
                         onChange={e => set('current_odometer_km', e.target.value)}
                         placeholder="214500"
                         className={cls('current_odometer_km')}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="rc_expiry" className={labelClass}>RC valid until</label>
+                      <input
+                        id="rc_expiry"
+                        type="date"
+                        value={form.rc_expiry}
+                        onChange={e => set('rc_expiry', e.target.value)}
+                        className={cls('rc_expiry')}
                       />
                     </div>
                   </div>
