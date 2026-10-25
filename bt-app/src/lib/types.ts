@@ -107,7 +107,10 @@ export type FeedItem = {
   alert?: { kind: AlertKind; severity: 'critical' | 'warning' | 'info' }
 }
 
-export type AlertKind = 'gps_silent' | 'trip_not_started' | 'unpaid_overdue' | 'licence_expiring'
+export type AlertKind =
+  | 'gps_silent' | 'trip_not_started' | 'unpaid_overdue' | 'licence_expiring'
+  | 'ewb_expiring' | 'delivered_away' | 'documents_not_ready' | 'pickup_no_truck' | 'at_drop_not_delivered'
+  | 'damage_reported' | 'delivery_unconfirmed' | 'no_bids' | 'truck_idle'
 
 // ── GET /me/summary — "how am I doing?" (mirrors bt-booking-service src/lib/summary/types.ts) ──
 // Only the panels this person's capabilities unlock, in their front-door order. Money is decided

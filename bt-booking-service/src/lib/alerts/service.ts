@@ -28,6 +28,12 @@ import {
   gpsSilentAlerts, licenceExpiringAlerts, tripNotStartedAlerts, unpaidOverdueAlerts, LICENCE_WARN_DAYS,
 } from './rules.js'
 import {
+  atDropNotDeliveredAlerts, damageReportedAlerts, deliveredAwayAlerts, deliveryUnconfirmedAlerts, documentsNotReadyAlerts,
+  ewbExpiringAlerts, noBidsAlerts, pickupNoTruckAlerts, truckIdleAlerts,
+} from './rules-wave1.js'
+import { pickupDocumentGaps } from '../documents/service.js'
+import { daysBetweenDates } from '../ist.js'
+import {
   KINDS_BY_CADENCE, SEVERITY_RANK,
   type AlertDraft, type AlertKind, type AlertRow, type SweepCadence, type SweepResult,
 } from './types.js'
@@ -82,6 +88,93 @@ async function draftsFor(kind: AlertKind, now: Date): Promise<AlertDraft[]> {
         licences.map((l) => ({ ...l, driver_name: names.get(l.driver_id) ?? null, fleet_owner_ids: seats.get(l.driver_id) ?? [] })),
         audience, now,
       )
+    }
+    // ── Wave 1 (rules-wave1.ts) ──
+    case 'ewb_expiring': {
+      const trips = await repo.listBookingsByStatus(['in_transit'])
+      if (trips.length === 0) return []
+      const [bills, audience] = await Promise.all([
+        repo.standingEwbByBooking(trips.map((b) => b.id)),
+        repo.loadAudience(trips.map((b) => b.driver_id), trips.map((b) => b.fleet_owner_id)),
+      ])
+      return ewbExpiringAlerts(
+        trips.flatMap((b) => { const e = bills.get(b.id); return e ? [{ booking: b, ewbNumber: e.ewb_number, validUpto: e.valid_upto }] : [] }),
+        audience, now,
+      )
+    }
+    case 'delivered_away': {
+      const done = await repo.listBookingsByStatus(['delivery_asserted', 'completed'])
+      if (done.length === 0) return []
+      const [dist, audience] = await Promise.all([
+        repo.deliveryDistances(done.map((b) => b.id)),
+        repo.loadAudience(done.map((b) => b.driver_id), done.map((b) => b.fleet_owner_id)),
+      ])
+      return deliveredAwayAlerts(
+        done.flatMap((b) => { const d = dist.get(b.id); return d ? [{ booking: b, distanceM: d.distanceM, source: d.source }] : [] }),
+        audience, now,
+      )
+    }
+    case 'documents_not_ready': {
+      const today = istDate(now)
+      const soon = (await repo.listBookingsByStatus(['accepted'])).filter((b) => { const d = daysBetweenDates(today, b.pickup_date); return d === 0 || d === 1 })
+      if (soon.length === 0) return []
+      const [gaps, audience] = await Promise.all([
+        Promise.all(soon.map((b) => pickupDocumentGaps(b.id))),
+        repo.loadAudience(soon.map((b) => b.driver_id), soon.map((b) => b.fleet_owner_id)),
+      ])
+      return documentsNotReadyAlerts(soon.map((b, i) => ({ booking: b, ...gaps[i] })), audience, now)
+    }
+    case 'pickup_no_truck': {
+      const today = istDate(now)
+      const soon = (await repo.listBookingsByStatus(['accepted']))
+        .filter((b) => b.fleet_owner_id && [0, 1].includes(daysBetweenDates(today, b.pickup_date)))
+      if (soon.length === 0) return []
+      const [live, audience] = await Promise.all([
+        repo.liveAssignmentBookings(soon.map((b) => b.id)),
+        repo.loadAudience([], soon.map((b) => b.fleet_owner_id)),
+      ])
+      return pickupNoTruckAlerts(soon.map((b) => ({ booking: b, assigned: live.has(b.id) })), audience, now)
+    }
+    case 'at_drop_not_delivered': {
+      const trips = await repo.listBookingsByStatus(['in_transit'])
+      if (trips.length === 0) return []
+      const [events, audience] = await Promise.all([
+        repo.latestDropEvents(trips.map((b) => b.id)),
+        repo.loadAudience(trips.map((b) => b.driver_id), trips.map((b) => b.fleet_owner_id)),
+      ])
+      return atDropNotDeliveredAlerts(
+        trips.map((b) => { const e = events.get(b.id); return { booking: b, enteredAt: e?.event === 'enter' ? e.occurred_at : null, exited: e?.event === 'exit' } }),
+        audience, now,
+      )
+    }
+    case 'damage_reported': {
+      const reports = await repo.damageReports()
+      if (reports.size === 0) return []
+      const bookings = await repo.bookingFactsByIds([...reports.keys()])
+      const audience = await repo.loadAudience(bookings.map((b) => b.driver_id), bookings.map((b) => b.fleet_owner_id))
+      return damageReportedAlerts(
+        bookings.map((b) => { const r = reports.get(b.id)!; return { booking: b, reportedAt: r.reported_at, delta: r.delta, unit: r.unit } }),
+        audience, now,
+      )
+    }
+    case 'delivery_unconfirmed': {
+      const asserted = await repo.listBookingsByStatus(['delivery_asserted'])
+      if (asserted.length === 0) return []
+      const [at, audience] = await Promise.all([
+        repo.assertedAtByBooking(asserted.map((b) => b.id)),
+        repo.loadAudience(asserted.map((b) => b.driver_id), asserted.map((b) => b.fleet_owner_id)),
+      ])
+      return deliveryUnconfirmedAlerts(asserted.map((b) => ({ booking: b, assertedAt: at.get(b.id) ?? null })), audience, now)
+    }
+    case 'no_bids': {
+      const open = await repo.openLoadsWithBids()
+      return noBidsAlerts(open, { driverUser: new Map(), fleetOwnerUser: new Map() }, now)
+    }
+    case 'truck_idle': {
+      const trucks = await repo.truckActivity()
+      if (trucks.length === 0) return []
+      const audience = await repo.loadAudience(trucks.map((t) => t.driver_id), trucks.map((t) => t.fleet_owner_id))
+      return truckIdleAlerts(trucks, audience, now)
     }
   }
 }
