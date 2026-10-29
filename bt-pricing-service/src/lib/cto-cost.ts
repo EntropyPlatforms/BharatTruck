@@ -34,6 +34,9 @@ export const OPEX_PER_KM: Record<VehicleClass, number> = { SCV: 3, LCV: 4, MCV: 
 // Object-handling / loading base by class (Appendix A "handling extra"). ASSUMPTIONS (Q9).
 export const HANDLING_BASE: Record<VehicleClass, number> = { SCV: 300, LCV: 500, MCV: 800, HCV: 1000 }
 
+// These class typicals are the fallback for the trip estimate when the CV-Parc norm tables cannot
+// be read (trip-estimate.ts), and the legacy cost_breakdown on a quote.
+
 // Driver wage — per-day, prorated over an average daily distance. ASSUMPTIONS (Q9).
 export const DRIVER_WAGE_PER_DAY = 1200
 // The quote's running day — see QUOTE_KM_PER_DAY in cost-constants.ts for why it is not the
@@ -52,18 +55,6 @@ export const VEHICLE_TYPE_TO_CLASS: Record<string, VehicleClass> = {
   lcv: 'LCV',
   hcv: 'HCV',
   trailer: 'HCV',    // ASSUMPTION (Q9)
-}
-
-// variableCostPerKm — what one kilometre actually costs to run, before the
-// fixed per-trip handling base. This is the floor the commercial rate card must
-// clear; see ratePerKm() in pricing.ts, which derives from it.
-//
-// Reads the live diesel price rather than a constant, so a fuel move flows
-// straight through to the quote instead of quietly eating the margin.
-export function variableCostPerKm(vehicleClass: VehicleClass): number {
-  return dieselPriceInr() / MILEAGE_KMPL[vehicleClass]
-    + DRIVER_WAGE_PER_DAY / AVG_KM_PER_DAY
-    + OPEX_PER_KM[vehicleClass]
 }
 
 export type CostBreakdown = {

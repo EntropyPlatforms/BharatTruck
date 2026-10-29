@@ -71,39 +71,32 @@ async function main() {
   r = await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())
   check('quote with token 200', r.statusCode === 200, `(got ${r.statusCode})`)
   const d = r.json().data
-  // HCV/100km: rate=round(36.714*1.63)=60 → base=6000, handling=1000, total=7000.
-  check('commercial split present (total_price=7000)', d?.total_price === 7000, `(got ${d?.total_price})`)
-  check('derived HCV rate is the founder market anchor (60/km)', d?.rate_per_km === 60, `(got ${d?.rate_per_km})`)
-  check('handling passed through at cost (1000)', d?.handling_fee === 1000, `(got ${d?.handling_fee})`)
-  check('cost_breakdown present + matches HCV/100', d?.cost_breakdown?.operating_cost_total === 4672 && d?.cost_breakdown?.vehicle_class === 'HCV', JSON.stringify(d?.cost_breakdown))
+  // The price is the trip estimate's indicative rate (founder brief, 29 Oct 2026):
+  //   trip cost → + 18% carrier return → × 1.05 market correction.
+  const e = d?.trip_estimate
+  check('quote carries the trip estimate', e && e.trip_cost > 0, JSON.stringify(e)?.slice(0, 200))
+  check('total_price is the shipper indicative rate', d?.total_price === e?.shipper_indicative, `(${d?.total_price} vs ${e?.shipper_indicative})`)
+  check('carrier estimate = trip cost + 18% of it', e?.carrier_estimate === e?.trip_cost + Math.round(e?.trip_cost * 0.18) && e?.carrier_return_pct === 18, JSON.stringify(e && [e.trip_cost, e.carrier_return, e.carrier_estimate]))
+  check('shipper rate = carrier estimate × 1.05', e?.shipper_indicative === Math.round(e?.carrier_estimate * 1.05) && e?.market_correction === 1.05, JSON.stringify(e && [e.carrier_estimate, e.shipper_indicative]))
+  check('trip cost is exactly operating + crew + handling + tolls', e?.trip_cost === e?.operating.total + e?.crew.total + e?.handling + e?.tolls.amount)
+  check('handling_fee is the estimate\'s handling line', d?.handling_fee === e?.handling, `(${d?.handling_fee} vs ${e?.handling})`)
+  check('cost_breakdown still present (vehicle_class for the lock)', d?.cost_breakdown?.vehicle_class === 'HCV', JSON.stringify(d?.cost_breakdown?.vehicle_class))
 
   console.log('\n── the regression guard: no class may be priced below cost ──')
-  // The original bug: a hand-written rate card (hcv: 22) sitting next to a cost
-  // engine that says an HCV costs ~36.7/km. Every class was underwater. Assert
-  // the property directly, across the whole matrix and at both a short and a
-  // long trip, so no future edit to either table can reintroduce it silently.
   for (const vt of ['mini_truck', 'lcv', 'hcv', 'trailer'] as const) {
     for (const km of [50, 1200]) {
       const q = (await quote({ distance_km: km, vehicle_type: vt, load_type: 'general', weight_kg: 1000 }, tok())).json().data
-      const cost = q.cost_breakdown.operating_cost_total
-      check(`${vt}/${km}km: carrier receives ${q.driver_receives} > cost ${cost}`, q.driver_receives > cost, '')
+      const cost = q.trip_estimate.trip_cost
+      check(`${vt}/${km}km: carrier receives ${q.driver_receives} > trip cost ${cost}`, q.driver_receives > cost && q.driver_receives >= q.trip_estimate.carrier_estimate, '')
     }
   }
 
-  console.log('\n── a fuel move flows through to the rate ──')
-  // The silent, one-directional failure the old hardcoded card had: diesel rises,
-  // cost rises, price does not, and the margin quietly vanishes.
-  const rateAt90 = (await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())).json().data.rate_per_km
+  console.log('\n── a fuel move flows through to the price ──')
+  const priceAt90 = (await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())).json().data.total_price
   process.env.DIESEL_PRICE_INR = '120'
-  const rateAt120 = (await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())).json().data.rate_per_km
+  const priceAt120 = (await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())).json().data.total_price
   delete process.env.DIESEL_PRICE_INR
-  check('diesel 90 → 120 raises the HCV rate', rateAt120 > rateAt90, `(${rateAt90} → ${rateAt120})`)
-
-  console.log('\n── per-type env override wins over the derived rate ──')
-  process.env.RATE_PER_KM_HCV = '75'
-  const overridden = (await quote({ distance_km: 100, vehicle_type: 'hcv', load_type: 'general', weight_kg: 1000 }, tok())).json().data
-  delete process.env.RATE_PER_KM_HCV
-  check('RATE_PER_KM_HCV=75 is used verbatim', overridden.rate_per_km === 75 && overridden.base_price === 7500, `(got ${overridden.rate_per_km}/${overridden.base_price})`)
+  check('diesel 90 → 120 raises the HCV price', priceAt120 > priceAt90, `(${priceAt90} → ${priceAt120})`)
 
   console.log('\n── class mapping assumptions (Q9-flagged) ──')
   r = await quote({ distance_km: 50, vehicle_type: 'mini_truck', load_type: 'general', weight_kg: 500 }, tok())
@@ -296,6 +289,20 @@ async function advisoryRoundTripFromShipper() {
     const fell = await shipperQuote('direct')
     check('quote FALLS BACK to the haversine estimate when tracking throws (never 500)', fell.statusCode === 200 && fell.json().data?.distance_basis === 'estimated', `(got ${fell.statusCode}/${fell.json().data?.distance_basis})`)
     check('the fallback distance is the haversine value, not the routed one', inserted.at(-1)?.distance_km !== 500 && (inserted.at(-1)?.distance_km ?? 0) > 0, `(got ${inserted.at(-1)?.distance_km})`)
+
+    // Route tolls: tracking reports Google's CAR toll; the estimate scales it to the truck's axle
+    // class (hcv → HCV Cargo 25-31T → 3-axle, 2.40 / 0.65 of a car).
+    __setRouteDistanceClientForTests({ routeDistanceKm: async () => 1400, routeInfo: async () => ({ distance_km: 1400, toll: { status: 'priced', car_toll_inr: 1000 } }) })
+    const tolled = (await shipperQuote('direct')).json().data
+    check('route tolls priced from the route, at the truck\'s axle rate (₹1000 car → ₹3692)',
+      tolled?.trip_estimate?.tolls?.basis === 'route' && tolled.trip_estimate.tolls.amount === Math.round(1000 * 2.4 / 0.65) && tolled.trip_estimate.tolls.axle_class === 'three_axle',
+      JSON.stringify(tolled?.trip_estimate?.tolls))
+    __setRouteDistanceClientForTests({ routeDistanceKm: async () => 1400, routeInfo: async () => ({ distance_km: 1400, toll: { status: 'unknown' } }) })
+    const unknownToll = (await shipperQuote('direct')).json().data
+    check('unknown route toll falls back to the class rate (HCV ₹1.80/km × 1400)',
+      unknownToll?.trip_estimate?.tolls?.basis === 'class_rate' && unknownToll.trip_estimate.tolls.amount === 2520,
+      JSON.stringify(unknownToll?.trip_estimate?.tolls))
+    check('the persisted row carries the trip estimate', inserted.at(-1)?.breakdown_json?.trip_estimate?.shipper_indicative === unknownToll?.quoted_price)
 
     __setRouteDistanceClientForTests(null)
 

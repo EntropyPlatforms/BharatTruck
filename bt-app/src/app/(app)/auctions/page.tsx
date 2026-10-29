@@ -33,12 +33,13 @@ import {
 } from '@/components/ui/dialog'
 import {
   ApiError, listOpenAuctions, listMyBids, listFleetBookings,
-  placeBid, counterBid, withdrawBid, getBidHistory, justifyBid,
+  placeBid, counterBid, withdrawBid, getBidHistory, justifyBid, listVehicles,
 } from '@/lib/api'
+import { truckQuoteFields } from '@/lib/truck-quote'
 import { quoteStatusConfig, bookingStatusConfig } from '@/lib/status'
 import { inr, inrCompact, inrSigned, shortDate, tons, timeAgo, dateTime } from '@/lib/format'
 import type {
-  AuctionBooking, FleetBid, FleetBooking, JustifyBreakdown, NegotiationEntry, OpenAuction, QuoteStatus,
+  AuctionBooking, BidEstimate, FleetBid, FleetBooking, NegotiationEntry, OpenAuction, QuoteStatus, Vehicle,
 } from '@/lib/types'
 import {
   BTN_BLUE, BTN_PRIMARY, BTN_SECONDARY, HINT, INPUT, LABEL, MONO, SELECT, TAB_OFF, TAB_ON, TEXTAREA, cx, pill,
@@ -891,48 +892,80 @@ function LoadSummary({ booking }: { booking: AuctionBooking }) {
 }
 
 /**
- * Mode B (P4): shows the fleet where their self-named bid lands — a cost breakdown that sums to the
- * amount they typed, from the load + route only. Never nudges; a below-cost bid is stated, not raised.
+ * The fleet's trip estimate for this load: what the chosen truck spends to run it (operating cost,
+ * driver & helper salary for the trip days, handling, tolls on the route) plus an 18% return —
+ * and, once a price is typed, where that bid lands. The bid itself is never changed.
  */
-function JustifyPanel({ breakdown }: { breakdown: JustifyBreakdown }) {
-  const c = breakdown.components
-  const rows: [string, number][] = [
-    ['Fuel', c.fuel],
-    ['Tolls', c.tolls],
-    ['Driver', c.driver],
-    ['Maintenance', c.maintenance],
-    ['Handling', c.handling],
-  ]
-  const belowCost = breakdown.position === 'below_typical_cost'
+function BidEstimatePanel({ data, onUseEstimate }: { data: BidEstimate; onUseEstimate: (n: number) => void }) {
+  const e = data.estimate
+  const line = (label: string, value: number, hint?: string) => (
+    <div key={label} className="flex justify-between gap-3">
+      <dt>{label}{hint && <span className="ml-1 text-xs text-gray-400">{hint}</span>}</dt>
+      <dd className="tabular-nums text-gray-900">{inr(value)}</dd>
+    </div>
+  )
+  const lube = e.operating.def + e.operating.lubricants
+  const group = 'pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-gray-400'
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-sm font-bold text-gray-900">Where this bid goes · {breakdown.distance_km} km</div>
-          <div className="text-xs text-gray-500">load &amp; route only</div>
+          <div className="text-sm font-bold text-gray-900">Trip estimate · {Math.round(data.distance_km).toLocaleString('en-IN')} km</div>
+          <div className="text-xs text-gray-500">
+            {e.model_category}
+            {e.emission_norm ? ` · ${e.emission_norm.toUpperCase()}` : ''}
+            {e.truck_age ? ` · ${e.truck_age} yr` : ''}
+            {e.operating_basis === 'class_typicals' ? ' · class averages' : ''}
+          </div>
         </div>
         <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" aria-hidden />
       </div>
-      <dl className="mt-3 space-y-2 text-sm text-gray-600">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex justify-between">
-            <dt>{label}</dt>
-            <dd className="tabular-nums text-gray-900">{inr(value)}</dd>
-          </div>
-        ))}
+      <dl className="mt-2 space-y-1.5 text-sm text-gray-600">
+        <div className={group}>Truck running</div>
+        {line('Fuel', e.operating.fuel)}
+        {lube > 0 && line('DEF & oils', lube)}
+        {line('Maintenance', e.operating.maintenance)}
+        {e.operating.tyres > 0 && line('Tyres', e.operating.tyres)}
+        <div className={group}>Crew · {e.trip_days} day{e.trip_days === 1 ? '' : 's'}</div>
+        {line('Driver salary', e.crew.driver_salary)}
+        {e.crew.has_helper && line('Helper salary', e.crew.helper_salary)}
+        {line('Daily allowance', e.crew.allowance)}
+        <div className={group}>Trip</div>
+        {line('Handling', e.handling)}
+        {line('Tolls', e.tolls.amount, e.tolls.basis === 'route' ? 'on this route' : 'class average')}
         <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
-          <dt>{belowCost ? 'Bid (scaled to cost)' : 'Operating cost'}</dt>
-          <dd className="tabular-nums">{inr(breakdown.cost_subtotal)}</dd>
+          <dt>Trip cost</dt>
+          <dd className="tabular-nums">{inr(e.trip_cost)}</dd>
         </div>
-        {!belowCost && (
-          <div className="flex justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-bold text-emerald-700">
-            <dt>Your margin</dt>
-            <dd className="tabular-nums">{inr(breakdown.margin)}</dd>
-          </div>
-        )}
+        {line(`Return (${e.carrier_return_pct}%)`, e.carrier_return)}
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-bold text-emerald-700">
+          <dt>Estimate</dt>
+          <dd className="flex items-center gap-2">
+            <span className="tabular-nums">{inr(e.carrier_estimate)}</span>
+            {data.amount !== e.carrier_estimate && (
+              <button
+                type="button"
+                onClick={() => onUseEstimate(e.carrier_estimate)}
+                className="rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              >
+                Use
+              </button>
+            )}
+          </dd>
+        </div>
       </dl>
-      <p className={cx('mt-3 text-xs leading-snug', belowCost ? 'text-amber-700' : 'text-gray-500')}>
-        {breakdown.note}
+      {data.amount !== null && data.margin !== null && (
+        <div className={cx('mt-3 rounded-lg px-3 py-2 text-sm', data.margin < 0 ? 'bg-red-50 text-red-700' : data.position === 'covers_cost' ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-gray-700')}>
+          <div className="flex justify-between font-semibold">
+            <span>Your bid {inr(data.amount)}</span>
+            <span className="tabular-nums">{inrSigned(data.margin)} · {data.return_pct}%</span>
+          </div>
+          <p className="mt-0.5 text-xs leading-snug">{data.note}</p>
+        </div>
+      )}
+      <p className="mt-3 text-[11px] leading-snug text-gray-400">
+        Tolls {e.tolls.basis === 'route' ? 'from the tolls on the pickup → drop route, at this truck\'s axle rate' : 'at the class average — the route\'s tolls were not available'}.
+        Empty running to the pickup is not included.
       </p>
     </div>
   )
@@ -949,36 +982,48 @@ function BidDialog({
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  // Mode B (P4): the engine justifies THIS bid — a breakdown that sums to the number the fleet types,
-  // from the load + route only. It never nudges; it just shows where the price would go.
-  const [justify, setJustify] = useState<JustifyBreakdown | null>(null)
+  // The trip estimate for the truck the fleet would send, and where its typed bid lands.
+  const [estimate, setEstimate] = useState<BidEstimate | null>(null)
+  // The fleet's own trucks; '' = the typical truck for the load's weight.
+  const [trucks, setTrucks] = useState<Vehicle[]>([])
+  const [truckId, setTruckId] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    // Drivers bidding solo may not read fleet vehicles; the estimate then uses the typical truck.
+    listVehicles().then((v) => { if (!cancelled) setTrucks(v.filter((t) => t.is_active)) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   // Reset per target, so one load's numbers never leak into the next dialog.
   useEffect(() => {
     setAmount(auction?.my_bid ? String(auction.my_bid.amount) : '')
     setMessage('')
     setError(null)
-    setJustify(null)
+    setEstimate(null)
   }, [auction])
 
-  // Debounced justify preview. Recomputes as the fleet edits the amount; sends load + route only.
+  // Debounced estimate. Shown as soon as the dialog opens; recomputed when the truck or the typed
+  // price changes. Preview only — a failure never blocks bidding.
   useEffect(() => {
+    if (!auction) { setEstimate(null); return }
     const n = Number(amount)
-    if (!auction || !Number.isFinite(n) || n <= 0) { setJustify(null); return }
+    const truck = trucks.find((t) => t.id === truckId)
     let cancelled = false
     const t = setTimeout(() => {
       justifyBid({
-        amount: n,
+        ...(Number.isFinite(n) && n > 0 ? { amount: n } : {}),
+        ...truckQuoteFields(truck),
         load_type: auction.load_type,
         weight_kg: auction.weight_kg,
         source_lat: auction.source_lat, source_lng: auction.source_lng,
         dest_lat: auction.dest_lat, dest_lng: auction.dest_lng,
       })
-        .then((b) => { if (!cancelled) setJustify(b) })
-        .catch(() => { if (!cancelled) setJustify(null) }) // preview only — never blocks bidding
+        .then((b) => { if (!cancelled) setEstimate(b) })
+        .catch(() => { if (!cancelled) setEstimate(null) })
     }, 400)
     return () => { cancelled = true; clearTimeout(t) }
-  }, [amount, auction])
+  }, [amount, auction, truckId, trucks])
 
   async function submit() {
     if (!auction) return
@@ -1043,13 +1088,26 @@ function BidDialog({
                 setMessage={setMessage}
                 error={error}
               />
-              {justify ? (
-                <JustifyPanel breakdown={justify} />
-              ) : (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-500 flex items-center justify-center text-center">
-                  Type a price to see where it goes.
-                </div>
-              )}
+              <div className="space-y-3">
+                {trucks.length > 0 && (
+                  <div>
+                    <label htmlFor="bid-truck" className={LABEL}>Estimate for</label>
+                    <select id="bid-truck" value={truckId} onChange={(e) => setTruckId(e.target.value)} className={cx(SELECT, 'h-11')}>
+                      <option value="">Typical truck for this load</option>
+                      {trucks.map((t) => (
+                        <option key={t.id} value={t.id}>{t.rc_number} · {t.model_category ?? 'type not set'}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {estimate ? (
+                  <BidEstimatePanel data={estimate} onUseEstimate={(n) => setAmount(String(n))} />
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-500 flex items-center justify-center text-center">
+                    Working out the trip cost…
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

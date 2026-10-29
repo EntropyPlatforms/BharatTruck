@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { evaluateFix } from '../lib/evaluator.js'
-import { computeRoute } from '../lib/google.js'
+import { computeRoute, computeRouteWithTolls } from '../lib/google.js'
 import { getOrCompute } from '../lib/cache.js'
 import { pointRouteKey, ROUTE_TTL_SECONDS } from '../lib/redis.js'
 import { TrackingError } from '../lib/types.js'
@@ -26,6 +26,8 @@ const PointRouteBody = z.object({
   source_lng: z.number().min(-180).max(180),
   dest_lat: z.number().min(-90).max(90),
   dest_lng: z.number().min(-180).max(180),
+  /** Also return the tolls on the route (pricing's trip estimate). Cached separately. */
+  with_tolls: z.boolean().optional(),
 })
 
 export async function internalRoutes(app: FastifyInstance) {
@@ -82,6 +84,22 @@ export async function internalRoutes(app: FastifyInstance) {
       throw new TrackingError(parsed.error.errors[0].message, 'VALIDATION_ERROR', 400)
     }
     const b = parsed.data
+    if (b.with_tolls) {
+      const tkey = pointRouteKey(b.source_lat, b.source_lng, b.dest_lat, b.dest_lng) + ':tolls'
+      const { value, cached } = await getOrCompute(tkey, ROUTE_TTL_SECONDS, () =>
+        computeRouteWithTolls({ lat: b.source_lat, lng: b.source_lng }, { lat: b.dest_lat, lng: b.dest_lng }),
+      )
+      return reply.send({
+        success: true,
+        data: {
+          distance_m: value.distance_m,
+          distance_km: Math.round((value.distance_m / 1000) * 100) / 100,
+          duration_s: value.static_duration_s,
+          toll: value.toll,
+          cached,
+        },
+      })
+    }
     const key = pointRouteKey(b.source_lat, b.source_lng, b.dest_lat, b.dest_lng)
     const { value, cached } = await getOrCompute(key, ROUTE_TTL_SECONDS, () =>
       computeRoute({ lat: b.source_lat, lng: b.source_lng }, { lat: b.dest_lat, lng: b.dest_lng }),

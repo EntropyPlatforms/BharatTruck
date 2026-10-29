@@ -3,11 +3,11 @@ import { z } from 'zod'
 import { QuoteBody, computeQuote } from '../lib/pricing.js'
 import { insertPriceQuote } from '../lib/price-quote-store.js'
 import { roadDistanceKm } from '../lib/geo.js'
-import { resolveCostFloor, type CostFloorBreakdown } from '../lib/cost-engine.js'
 import { defaultRouteDistanceClient } from '../lib/tracking-client.js'
+import { resolveTripEstimate, type RouteToll } from '../lib/trip-estimate.js'
 import { resolveMarketPrice, type MarketResult, type MarketVehicleClass } from '../lib/market-engine.js'
 import { reconcile } from '../lib/reconcile.js'
-import { justifyPrice } from '../lib/justify.js'
+import { bidEstimate } from '../lib/justify.js'
 
 // -----------------------------------------------------------
 // pricingRoutes — public, JWT-gated. Mounted under `/pricing` so the gateway
@@ -64,7 +64,8 @@ const QUOTE_TTL_MS = 30 * 60_000 // 30 minutes
 // QuoteBody's load_type enum (single source of truth).
 const JustifyRequestBody = z
   .object({
-    amount:      z.number().positive(),
+    /** The fleet's typed bid; omitted, only the estimate is returned. */
+    amount:      z.number().positive().optional(),
     distance_km: z.number().positive().optional(),
     source_lat:  lat.optional(),
     source_lng:  lng.optional(),
@@ -72,6 +73,10 @@ const JustifyRequestBody = z
     dest_lng:    lng.optional(),
     load_type:   QuoteBody.shape.load_type,
     weight_kg:   z.number().positive(),
+    // The truck the fleet would send. Omitted → the typical truck for the load's weight.
+    model_category: QuoteBody.shape.model_category,
+    emission_norm:  QuoteBody.shape.emission_norm,
+    truck_age:      QuoteBody.shape.truck_age,
   })
   .refine(
     (b) =>
@@ -96,18 +101,24 @@ type WarnLogger = { warn(obj: unknown, msg: string): void }
 async function resolveRouteDistance(
   coords: { source_lat: number; source_lng: number; dest_lat: number; dest_lng: number },
   log: WarnLogger,
-): Promise<{ distance_km: number; distance_basis: 'routed' | 'estimated' }> {
+): Promise<{ distance_km: number; distance_basis: 'routed' | 'estimated'; route_toll: RouteToll }> {
   const routeClient = defaultRouteDistanceClient()
   let routedKm: number | null = null
+  let route_toll: RouteToll = { status: 'unknown' }
   if (routeClient) {
     try {
-      routedKm = await routeClient.routeDistanceKm(coords)
+      if (routeClient.routeInfo) {
+        const info = await routeClient.routeInfo(coords)
+        if (info) { routedKm = info.distance_km; route_toll = info.toll }
+      } else {
+        routedKm = await routeClient.routeDistanceKm(coords)
+      }
     } catch (err) {
       log.warn({ err }, 'tracking route lookup failed; falling back to haversine estimate')
     }
   }
   const distance_km = routedKm ?? roadDistanceKm(coords.source_lat, coords.source_lng, coords.dest_lat, coords.dest_lng)
-  return { distance_km, distance_basis: routedKm != null ? 'routed' : 'estimated' }
+  return { distance_km, distance_basis: routedKm != null ? 'routed' : 'estimated', route_toll }
 }
 
 export async function pricingRoutes(app: FastifyInstance) {
@@ -120,7 +131,7 @@ export async function pricingRoutes(app: FastifyInstance) {
     }
     try {
       // Real routed distance (cached in tracking), with a haversine fallback — see resolveRouteDistance.
-      const { distance_km, distance_basis } = await resolveRouteDistance({
+      const { distance_km, distance_basis, route_toll } = await resolveRouteDistance({
         source_lat: body.data.source_lat, source_lng: body.data.source_lng,
         dest_lat:   body.data.dest_lat,   dest_lng:   body.data.dest_lng,
       }, req.log)
@@ -134,25 +145,20 @@ export async function pricingRoutes(app: FastifyInstance) {
         })
       }
 
-      // Resolve the REAL CV-Parc cost floor. Defensive: a norms-table outage must
-      // not take down quoting — the commercial split below does not depend on the
-      // floor — so a failure logs and degrades to `cost_floor: null`. In
-      // production the tables are seeded, so this populates.
-      let costFloor: CostFloorBreakdown | null = null
-      try {
-        costFloor = await resolveCostFloor({
-          distance_km,
-          weight_kg:        body.data.weight_kg,
-          load_type:        body.data.load_type,
-          vehicle_type:     body.data.vehicle_type,
-          model_category:   body.data.model_category,
-          emission_norm:    body.data.emission_norm,
-          truck_age:        body.data.truck_age,
-          diesel_price_inr: body.data.diesel_price_inr,
-        })
-      } catch (err) {
-        req.log.warn({ err }, 'CV-Parc cost floor unavailable; quoting with the commercial split only')
-      }
+      // The trip estimate: the truck's CV-Parc norms + crew + handling + the route's tolls, then the
+      // carrier return and market correction. A norms-table outage degrades to class typicals
+      // (trip_estimate.operating_basis says so) rather than failing the quote.
+      const { estimate, floor: costFloor } = await resolveTripEstimate({
+        distance_km,
+        weight_kg:        body.data.weight_kg,
+        load_type:        body.data.load_type,
+        vehicle_type:     body.data.vehicle_type,
+        model_category:   body.data.model_category,
+        emission_norm:    body.data.emission_norm,
+        truck_age:        body.data.truck_age,
+        diesel_price_inr: body.data.diesel_price_inr,
+        route_toll,
+      }, (err) => req.log.warn({ err }, 'CV-Parc cost floor unavailable; estimating from class typicals'))
 
       // booking_type is optional and only classifies the result (advisory vs
       // binding) — it does not touch the maths. Omitted → binding, so every
@@ -163,7 +169,7 @@ export async function pricingRoutes(app: FastifyInstance) {
         load_type:    body.data.load_type,
         weight_kg:    body.data.weight_kg,
         booking_type: body.data.booking_type,
-      }, costFloor)
+      }, estimate, costFloor)
 
       // Market reference (P2): the FR8-calibrated corridor rate for this lane (directional), with a
       // national ₹/km-by-class fallback. Defensive like the cost floor — a market-table outage must
@@ -243,6 +249,7 @@ export async function pricingRoutes(app: FastifyInstance) {
       // are present, reusing the same routed-or-haversine path (and tracking cache) as /quote.
       let distance_km = body.data.distance_km
       let distance_basis: 'routed' | 'estimated' | 'given' = 'given'
+      let route_toll: RouteToll = { status: 'unknown' }
       if (distance_km == null) {
         const resolved = await resolveRouteDistance({
           source_lat: body.data.source_lat!, source_lng: body.data.source_lng!,
@@ -250,6 +257,7 @@ export async function pricingRoutes(app: FastifyInstance) {
         }, req.log)
         distance_km = resolved.distance_km
         distance_basis = resolved.distance_basis
+        route_toll = resolved.route_toll
       }
       if (!(distance_km > 0)) {
         return reply.status(400).send({
@@ -258,13 +266,16 @@ export async function pricingRoutes(app: FastifyInstance) {
           code: 'VALIDATION_ERROR',
         })
       }
-      const breakdown = justifyPrice({
-        amount:      body.data.amount,
+      const { estimate } = await resolveTripEstimate({
         distance_km,
-        load_type:   body.data.load_type,
-        weight_kg:   body.data.weight_kg,
-      })
-      return reply.send({ success: true, data: { ...breakdown, distance_km, distance_basis } })
+        weight_kg:      body.data.weight_kg,
+        load_type:      body.data.load_type,
+        model_category: body.data.model_category,
+        emission_norm:  body.data.emission_norm,
+        truck_age:      body.data.truck_age,
+        route_toll,
+      }, (err) => req.log.warn({ err }, 'CV-Parc cost floor unavailable; estimating from class typicals'))
+      return reply.send({ success: true, data: { ...bidEstimate(estimate, body.data.amount), distance_km, distance_basis } })
     } catch (err) {
       return handleError(reply, err)
     }

@@ -5,6 +5,7 @@
 
 import { TrackingError, type Bounds, type LatLng } from './types.js'
 import { gstStateCode } from '@bharattruck/shared/india-states'
+import { parseRouteToll, type RouteToll } from './tolls.js'
 
 const KEY = process.env.GOOGLE_MAPS_SERVER_KEY
 if (!KEY) throw new Error('GOOGLE_MAPS_SERVER_KEY must be set')
@@ -82,6 +83,37 @@ export async function computeRoute(origin: LatLng, dest: LatLng): Promise<Comput
       sw_lat: vp.low?.latitude ?? Math.min(origin.lat, dest.lat),
       sw_lng: vp.low?.longitude ?? Math.min(origin.lng, dest.lng),
     },
+  }
+}
+
+export interface ComputedRouteTolls {
+  distance_m: number
+  static_duration_s: number
+  toll: RouteToll
+}
+
+/**
+ * Distance plus the tolls Google expects on the route (car rates — pricing scales them to the
+ * truck's axle class). TOLLS bills at a higher Routes tier than a bare distance, so callers cache
+ * it per lane exactly like the plain route.
+ */
+export async function computeRouteWithTolls(origin: LatLng, dest: LatLng): Promise<ComputedRouteTolls> {
+  const json = await callRoutes(
+    {
+      origin: waypoint(origin),
+      destination: waypoint(dest),
+      travelMode: 'DRIVE',
+      extraComputations: ['TOLLS'],
+      routeModifiers: { vehicleInfo: { emissionType: 'DIESEL' } },
+    },
+    'routes.distanceMeters,routes.staticDuration,routes.travelAdvisory.tollInfo',
+  )
+  const r = json.routes?.[0]
+  if (!r) throw new TrackingError('No route found between pickup and drop', 'NOT_FOUND', 404)
+  return {
+    distance_m: r.distanceMeters ?? 0,
+    static_duration_s: parseDurationSeconds(r.staticDuration),
+    toll: parseRouteToll(r),
   }
 }
 

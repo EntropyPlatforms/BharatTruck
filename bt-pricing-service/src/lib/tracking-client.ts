@@ -6,11 +6,18 @@
 // failure, timeout, or missing secret returns null — the caller then falls back to a self-contained
 // haversine estimate, so a quote never hard-fails on tracking being down (pricing-engine P1).
 
+import type { RouteToll } from './trip-estimate.js'
+
 export type RouteCoords = { source_lat: number; source_lng: number; dest_lat: number; dest_lng: number }
+
+/** Road distance plus the tolls on the route (car rates); toll is 'unknown' from an older tracking. */
+export type RouteInfo = { distance_km: number; toll: RouteToll }
 
 export interface RouteDistanceClient {
   /** Road distance in km, or null if tracking is unavailable (caller falls back to haversine). */
   routeDistanceKm(coords: RouteCoords): Promise<number | null>
+  /** Distance + route tolls in one call; null if tracking is unavailable. Optional for test fakes. */
+  routeInfo?(coords: RouteCoords): Promise<RouteInfo | null>
 }
 
 const DEFAULT_TIMEOUT_MS = 2500
@@ -23,19 +30,33 @@ export class HttpRouteDistanceClient implements RouteDistanceClient {
   ) {}
 
   async routeDistanceKm(coords: RouteCoords): Promise<number | null> {
+    return (await this.post(coords, false))?.distance_km ?? null
+  }
+
+  async routeInfo(coords: RouteCoords): Promise<RouteInfo | null> {
+    return this.post(coords, true)
+  }
+
+  private async post(coords: RouteCoords, withTolls: boolean): Promise<RouteInfo | null> {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs)
     try {
       const res = await fetch(`${this.baseUrl}/internal/route/point`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-secret': this.internalSecret },
-        body: JSON.stringify(coords),
+        body: JSON.stringify(withTolls ? { ...coords, with_tolls: true } : coords),
         signal: ctrl.signal,
       })
       if (!res.ok) { warnRouteFallback(`tracking answered ${res.status}`); return null }
-      const json = (await res.json()) as { success?: boolean; data?: { distance_km?: number } }
+      const json = (await res.json()) as { success?: boolean; data?: { distance_km?: number; toll?: RouteToll } }
       const km = json?.data?.distance_km
-      return typeof km === 'number' && km > 0 ? km : null
+      if (!(typeof km === 'number' && km > 0)) return null
+      const t = json.data?.toll
+      const toll: RouteToll =
+        t?.status === 'priced' && Number(t.car_toll_inr) >= 0 ? { status: 'priced', car_toll_inr: Number(t.car_toll_inr) }
+          : t?.status === 'none' ? { status: 'none' }
+            : { status: 'unknown' }
+      return { distance_km: km, toll }
     } catch (err) {
       // Timeout / network / abort / bad JSON — all resolve to "no routed distance", fall back.
       warnRouteFallback(err instanceof Error ? err.message : String(err))
