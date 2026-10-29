@@ -14,6 +14,7 @@ import { opsRoutes } from './routes/ops.js'
 import { documentRoutes } from './routes/documents.js'
 import { bahiRoutes } from './routes/bahi.js'
 import { notificationRoutes } from './routes/notifications.js'
+import { whatsappRoutes } from './routes/whatsapp.js'
 import { startDispatchLoop } from './lib/notifications/dispatcher.js'
 import { mailer, smtpConfigured } from './lib/notifications/mailer.js'
 
@@ -40,6 +41,10 @@ async function bootstrap() {
 
   // Public, unauthenticated: unsubscribe links must work from a mail client.
   await app.register(notificationRoutes, { prefix: '/notifications' })
+
+  // Public, unauthenticated: Meta's WhatsApp webhook. Gated by Meta's request signature,
+  // not a user token, and off (503) unless every WHATSAPP_* setting is present.
+  await app.register(whatsappRoutes, { prefix: '/whatsapp' })
 
   // Auth-gated routes (user JWT)
   await app.register(async (authedApp) => {

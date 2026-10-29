@@ -73,6 +73,8 @@ export type SweepResult = {
   escalated: number
   resolved: number
   emailed: number
+  /** Critical alerts queued for WhatsApp (people who opted in there and have not sent STOP). */
+  whatsapp_queued: number
 }
 
 /** Thrown when migration 0042 is not applied yet; the route answers 503 with this code. */
