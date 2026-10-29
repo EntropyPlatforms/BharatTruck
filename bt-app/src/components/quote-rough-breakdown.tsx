@@ -6,11 +6,10 @@
  * Opens across the full width of the price row (the caller positions it), so it never runs off
  * a narrow card.
  *
- * Three round lines that add up to the quote exactly: fuel, driver, and "running, tolls &
- * handling". The platform's share is part of the third line, never a line of its own, and there
- * is no cost floor, market rate or margin here — one price, and roughly where it goes. The
- * engine's fuel and driver figures are used where they are sane; otherwise the lines fall back
- * to typical shares so the panel never shows a negative or an absurd split.
+ * The indicative rate in three lines that add up to it exactly (founder brief, 29 Oct 2026):
+ * operating cost of the trip (truck running, driver & helper, tolls, handling), the fleet
+ * operator's margin, and the market correction. Quotes made before the trip estimate existed fall
+ * back to the older rough split (fuel / driver / the rest).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -23,10 +22,24 @@ export type RoughLine = { label: string; hint: string; amount: number }
 
 const round50 = (n: number) => Math.round(n / 50) * 50
 
-/** Pure: the three lines, summing to Math.round(quoted_price). */
+/** Pure: the indicative rate's lines, summing to Math.round(quoted_price). */
 export function roughQuoteLines(q: PriceQuote): RoughLine[] {
   const total = Math.round(q.quoted_price)
   if (!Number.isFinite(total) || total <= 0) return []
+  const e = q.trip_estimate
+  if (e && e.shipper_indicative === total) {
+    const crew = e.crew.driver_salary + e.crew.helper_salary + e.crew.allowance
+    const km = Math.round(e.distance_km).toLocaleString('en-IN')
+    return [
+      {
+        label: 'Operating cost',
+        hint: `${km} km in a ${e.model_category}: truck running ${inr(e.operating.total)}, ${e.crew.has_helper ? 'driver & helper' : 'driver'} ${inr(crew)}, tolls ${inr(e.tolls.amount)}, handling ${inr(e.handling)}`,
+        amount: e.trip_cost,
+      },
+      { label: `Fleet operator margin (${e.carrier_return_pct}%)`, hint: 'the carrier\'s return on the trip cost', amount: e.carrier_return },
+      { label: `Market correction (×${e.market_correction})`, hint: 'keeps the rate fair to both sides of the market', amount: e.market_correction_amount },
+    ]
+  }
   const b = q.breakdown
   const km = b?.distance_km != null && Number.isFinite(b.distance_km) ? Math.round(b.distance_km) : null
   const fuelIn = Number(b?.fuel_cost)
@@ -83,7 +96,7 @@ export default function QuoteRoughBreakdown({ quote }: { quote: PriceQuote }) {
       </button>
       {open && (
         <div role="dialog" aria-label="Rough working of the price" className="absolute inset-x-0 top-full z-20 mt-1.5 rounded-xl border border-gray-200 bg-white p-3.5 shadow-lg">
-          <p className="text-xs font-semibold text-gray-900">Roughly where the price goes</p>
+          <p className="text-xs font-semibold text-gray-900">{quote.trip_estimate ? 'How the indicative rate is built' : 'Roughly where the price goes'}</p>
           <dl className="mt-2 space-y-1.5">
             {lines.map((l) => (
               <div key={l.label} className="flex items-start justify-between gap-3">
@@ -96,10 +109,10 @@ export default function QuoteRoughBreakdown({ quote }: { quote: PriceQuote }) {
             ))}
           </dl>
           <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2">
-            <span className="text-xs font-semibold text-gray-900">Your price</span>
+            <span className="text-xs font-semibold text-gray-900">{quote.trip_estimate ? 'Indicative rate' : 'Your price'}</span>
             <span className="text-sm font-bold text-gray-900 tabular-nums">{inr(total)}</span>
           </div>
-          <p className="mt-2 text-[11px] text-gray-400">Rounded, indicative split. The price you pay is the figure above.</p>
+          <p className="mt-2 text-[11px] text-gray-400">{quote.trip_estimate ? 'Estimated from the truck type, the route and its tolls. The price you pay is the figure above.' : 'Rounded, indicative split. The price you pay is the figure above.'}</p>
         </div>
       )}
     </div>

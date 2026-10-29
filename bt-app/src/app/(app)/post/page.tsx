@@ -47,6 +47,7 @@ import { inr, todayInIndia } from '@/lib/format'
 import CargoDetails, { EMPTY_CARGO_DETAILS, dimensionsJson, expectedQuantity, type CargoDetailsValue } from '@/components/cargo-details'
 import { VEHICLE_CLASS_LIMITS, canCarry, vehicleClassForWeight } from '@/lib/vehicle-class'
 import QuoteRoughBreakdown from '@/components/quote-rough-breakdown'
+import { truckQuoteFields } from '@/lib/truck-quote'
 import {
   BTN_PRIMARY, BTN_SECONDARY, HINT, INPUT, INPUT_ERROR, LABEL, SEG_OFF, SEG_ON, SELECT, TEXTAREA, cx, pill,
 } from '@/lib/ui'
@@ -65,17 +66,6 @@ const LOAD_TYPES: { value: PriceQuoteLoadType; label: string }[] = [
   { value: 'hazardous', label: 'Hazardous' },
   { value: 'heavy_machinery', label: 'Heavy machinery' },
 ]
-
-/** The quote fields a chosen truck contributes; empty when no truck or nothing on record. */
-function truckQuoteFields(t: { model_category: string | null; emission_norm: string | null; manufacture_year: number | null } | null | undefined) {
-  if (!t) return {}
-  const out: { model_category?: string; emission_norm?: 'bs6' | 'bs4'; truck_age?: number } = {}
-  if (t.model_category) out.model_category = t.model_category
-  const norm = (t.emission_norm ?? '').toLowerCase()
-  if (norm === 'bs6' || norm === 'bs4') out.emission_norm = norm
-  if (t.manufacture_year && t.manufacture_year > 1980) out.truck_age = Math.max(1, new Date().getFullYear() - t.manufacture_year)
-  return out
-}
 
 const VEHICLE_TYPES: { value: PriceQuoteVehicleType; label: string }[] = [
   { value: 'mini_truck', label: 'Mini truck' },

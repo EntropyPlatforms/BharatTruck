@@ -94,8 +94,11 @@ export const MAX_AGE_YEARS = 10
 // ICV and heavier carry a helper (₹55k/mo). Note ICV is vehicle_class 'LCV' but
 // still crewed, so this keys on model_category, not the 4-way class.
 const DRIVER_ONLY_CATEGORIES = new Set(['SCV Cargo', 'Pickups', 'LCV (4-7 T)'])
-const CREW_MONTHLY_DRIVER_ONLY_INR = 35000
-const CREW_MONTHLY_WITH_HELPER_INR = 55000
+/** A driver's monthly salary; a crewed truck adds a helper on top (₹35k + ₹20k = the workbook's ₹55k). */
+export const DRIVER_MONTHLY_INR = 35000
+export const HELPER_MONTHLY_INR = 20000
+const CREW_MONTHLY_DRIVER_ONLY_INR = DRIVER_MONTHLY_INR
+const CREW_MONTHLY_WITH_HELPER_INR = DRIVER_MONTHLY_INR + HELPER_MONTHLY_INR
 const ALLOWANCE_PER_DAY_DRIVER_ONLY_INR = 440
 const ALLOWANCE_PER_DAY_WITH_CREW_INR = 320
 
@@ -139,6 +142,21 @@ export function crewMonthlyInr(modelCategory: string): number {
 
 export function allowancePerDayInr(modelCategory: string): number {
   return isDriverOnly(modelCategory) ? ALLOWANCE_PER_DAY_DRIVER_ONLY_INR : ALLOWANCE_PER_DAY_WITH_CREW_INR
+}
+
+/** Running days for a trip — the unit salaries and allowances are distributed over. */
+export function tripDaysFor(distanceKm: number): number {
+  return Math.max(1, Math.ceil(distanceKm / AVG_KM_PER_DAY))
+}
+
+/** A salary's share for the trip: trip days × monthly ÷ working days in a month. */
+export function salaryForTrip(monthlyInr: number, tripDays: number): number {
+  return Math.round(tripDays * (monthlyInr / WORKING_DAYS_PER_MONTH))
+}
+
+/** Loading/unloading for this load: tonnes × the per-tonne rate for its load type. */
+export function handlingInr(weightTons: number, loadType: string): number {
+  return Math.round(weightTons * (HANDLING_PER_TON_INR[loadType] ?? HANDLING_PER_TON_INR.general))
 }
 
 /** model_category from an explicit value, else the legacy vehicle_type map, else the MCV fallback. */

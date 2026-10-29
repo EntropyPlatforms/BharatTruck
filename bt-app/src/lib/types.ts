@@ -923,25 +923,56 @@ export type PriceQuote = {
   market?: PriceQuoteMarket | null
   /** Floor ↔ quote ↔ market placement + a UI-ready note (P3). */
   reconciliation?: PriceQuoteReconciliation | null
+  /** Every line of the price (bt-pricing-service trip-estimate.ts). Absent on quotes made before it. */
+  trip_estimate?: TripEstimate
 }
 
 /**
- * "Justify-a-price" breakdown (bt-pricing-service Mode B, P4). A carrier names their own bid and the
- * engine reverse-generates a cost breakdown that sums to it, from the load + route ALONE (no truck
- * details). `components` + `margin` === `amount`, to the rupee. Never nudges.
+ * The one cost structure behind the fleet's bid estimate and the shipper's rate:
+ *   trip cost = truck operating + driver & helper + allowance + handling + route tolls
+ *   carrier_estimate   = trip cost + carrier_return_pct (18%)
+ *   shipper_indicative = carrier_estimate × market_correction (1.05)
  */
-export type JustifyBreakdown = {
-  amount: number
-  cost_subtotal: number
-  margin: number
-  position: 'margin' | 'below_typical_cost'
-  components: {
-    fuel: number
-    tolls: number
-    driver: number
-    maintenance: number
-    handling: number
+export type TripEstimate = {
+  model_category: string
+  vehicle_class: 'SCV' | 'LCV' | 'MCV' | 'HCV'
+  emission_norm: 'bs6' | 'bs4' | null
+  truck_age: number | null
+  distance_km: number
+  trip_days: number
+  diesel_price_inr: number
+  operating_basis: 'cv_parc_norms' | 'class_typicals'
+  operating: { fuel: number; def: number; lubricants: number; maintenance: number; tyres: number; total: number }
+  crew: {
+    driver_salary: number
+    helper_salary: number
+    allowance: number
+    total: number
+    has_helper: boolean
+    driver_monthly_inr: number
+    helper_monthly_inr: number
   }
+  handling: number
+  tolls: { amount: number; basis: 'route' | 'class_rate'; axle_class: string; car_toll_inr: number | null }
+  trip_cost: number
+  carrier_return_pct: number
+  carrier_return: number
+  carrier_estimate: number
+  market_correction: number
+  market_correction_amount: number
+  shipper_indicative: number
+}
+
+/**
+ * What a fleet sees when bidding (POST /pricing/justify): the trip estimate for its truck and,
+ * once a bid is typed, where it lands against the trip cost. The bid is never adjusted.
+ */
+export type BidEstimate = {
+  estimate: TripEstimate
+  amount: number | null
+  margin: number | null
+  return_pct: number | null
+  position: 'at_or_above_estimate' | 'covers_cost' | 'below_cost' | null
   note: string
   distance_km: number
   distance_basis: 'routed' | 'estimated' | 'given'

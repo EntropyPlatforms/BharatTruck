@@ -42,3 +42,23 @@ export function classForWeightKg(weightKg: number): CostClass {
   if (weightKg <= 16_000) return 'MCV'
   return 'HCV'
 }
+
+// ── Trip estimate structure (founder brief, 29 Oct) ──────────────────────────
+//   carrier estimate   = trip cost × (1 + CARRIER_RETURN_PCT)
+//   shipper indicative = carrier estimate × MARKET_CORRECTION
+// Trip cost is the truck's operating cost + driver & helper salary for the trip days + handling
+// + tolls on the route (trip-estimate.ts).
+
+/** The fleet operator's return on the money spent to execute the trip (0.18 = 18%). */
+export const CARRIER_RETURN_PCT = envNum('CARRIER_RETURN_PCT', 0.18)
+
+/**
+ * Market correction on the shipper's indicative rate — a starting value protecting the fleet's
+ * margin while keeping the shipper's price close to cost. To be derived from booked history and
+ * market references later; marketCorrectionFactor() is the one place that logic will go.
+ */
+export const MARKET_CORRECTION = envNum('MARKET_CORRECTION_FACTOR', 1.05)
+
+export function marketCorrectionFactor(): number {
+  return MARKET_CORRECTION
+}

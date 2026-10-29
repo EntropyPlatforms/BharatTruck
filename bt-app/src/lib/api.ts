@@ -17,7 +17,7 @@ import type {
   FleetOverview, Geofence,
   OpenAuction, FleetBid, Quote, NegotiationEntry, QuoteStatus,
   Booking, BookingType, ConsigneeInput,
-  PriceQuote, PriceQuoteInput, PriceQuoteVehicleType, JustifyBreakdown,
+  PriceQuote, PriceQuoteInput, PriceQuoteVehicleType, BidEstimate,
   TrackData, DriverLocation,
   LocationUpdate, PodContext, RequestOtpResult, VerifyOtpResult, RouteData, PumpsData, FuelData, AlertsData,
   EvidenceCaptureInput, CaptureResult, AssertReason, AssertResult, DiscrepancyInput, DiscrepancyResult, PodRecord,
@@ -894,12 +894,16 @@ export function getPriceQuote(payload: PriceQuoteInput) {
 }
 
 /**
- * Mode B — justify a self-named bid. Sends the load + route ONLY (no truck details); the engine
- * returns a breakdown that sums to `amount`. Coords let the service derive the routed distance and
- * reuse the tracking cache; pass a booking's source/dest.
+ * The fleet's bid estimate: trip cost for the truck it would send (operating, driver & helper,
+ * handling, route tolls) + its 18% return, and — with `amount` — where that bid lands. No truck
+ * fields → the typical truck for the load's weight. Coords let the service route the trip and price
+ * its tolls; pass the booking's source/dest.
  */
 export function justifyBid(payload: {
-  amount: number
+  amount?: number
+  model_category?: string
+  emission_norm?: 'bs6' | 'bs4'
+  truck_age?: number
   load_type: string
   weight_kg: number
   source_lat: number
@@ -907,7 +911,7 @@ export function justifyBid(payload: {
   dest_lat: number
   dest_lng: number
 }) {
-  return request<JustifyBreakdown>('/pricing/justify', { method: 'POST', body: JSON.stringify(payload) })
+  return request<BidEstimate>('/pricing/justify', { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export function quoteKindOf(quote: PriceQuote, requestedFor?: BookingType): 'advisory' | 'binding' {

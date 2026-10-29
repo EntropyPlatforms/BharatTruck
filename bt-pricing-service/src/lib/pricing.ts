@@ -2,68 +2,24 @@ import { z } from 'zod'
 import {
   type VehicleClass,
   VEHICLE_TYPE_TO_CLASS,
-  HANDLING_BASE,
   costBreakdown,
-  variableCostPerKm,
   type CostBreakdown,
 } from './cto-cost.js'
 import type { CostFloorBreakdown } from './cost-engine.js'
+import { buildTripEstimate, categoryForWeightKg, type TripEstimate } from './trip-estimate.js'
+import { resolveModelCategory } from './cost-engine.js'
 
 // -----------------------------------------------------------
-// Commercial split (what the shipper is charged) PLUS the CTO deterministic
-// cost-breakdown anchor (Appendix A) so the shipper sees where the price comes
-// from. Both are returned together.
+// The shipper's price is the INDICATIVE RATE of the trip estimate (lib/trip-estimate.ts):
 //
-// THE RATE CARD IS DERIVED FROM THE COST MODEL, NOT HARDCODED.
+//   trip cost (truck running + driver & helper + handling + route tolls)
+//   + the fleet operator's return (18% of trip cost)
+//   × market correction (1.05)
 //
-// It used to be a second, independent table of magic numbers — hcv: 22 — sitting
-// next to a cost engine that says an HCV costs 90/3.5 + 1200/400 + 8 = ~36.7 per
-// km to run. Every class was underwater, worst at HCV, where the platform quoted
-// 22 against a 36.7 cost and the carrier ate ~15/km. That is what put negative
-// margins on the fleet P&L dashboards.
-//
-// Two hardcoded tables cannot stay in sync, and the failure is silent and
-// one-directional: raise DIESEL_PRICE_INR and the cost side moves while the rate
-// side does not, so the same bug quietly comes back and deepens with every fuel
-// move. Deriving the rate from the cost makes "priced below cost" structurally
-// unreachable for any positive margin multiple.
+// It replaced a ₹/km rate card (operating cost × 1.63, anchored on ₹60/km for an HCV) on the
+// founder's brief of 29 Oct 2026, so the shipper's number is built from the same lines a fleet
+// sees when it bids — a truck-specific cost, a stated carrier margin, and one market factor.
 // -----------------------------------------------------------
-
-/** Read a positive number from the environment, falling back when unset/invalid. */
-function envNum(name: string, fallback: number): number {
-  const v = Number(process.env[name])
-  return Number.isFinite(v) && v > 0 ? v : fallback
-}
-
-/**
- * Gross margin over operating cost.
- *
- * Anchored on the only real market numbers we have (founder, 2026-08-02): an HCV
- * costs about 36/km to run and moves at about 60/km in the market. 36.71 * 1.63
- * = 59.8, which reproduces that 60 from the cost model alone — so one constant
- * carries the whole card instead of four independently-guessed rates.
- */
-export const MARGIN_MULTIPLE = envNum('PRICE_MARGIN_MULTIPLE', 1.63)
-
-/**
- * Commercial rate (INR/km) for a vehicle type.
- *
- * Derived from the cost model, with a per-type env escape hatch —
- * `RATE_PER_KM_HCV=60` — for when the founder has a real number for a lane and
- * wants it used verbatim rather than computed. Overrides are deliberately NOT
- * floored at cost: an operator setting a rate is making a commercial decision
- * (a loss-leader on a return leg is a real strategy) and the platform should not
- * silently overrule it. The default path is the one that must never go
- * underwater, and it cannot.
- */
-export function ratePerKm(vehicleType: string): number {
-  const override = envNum(`RATE_PER_KM_${vehicleType.toUpperCase()}`, 0)
-  if (override) return override
-  const cls: VehicleClass = VEHICLE_TYPE_TO_CLASS[vehicleType] ?? 'MCV'
-  return Math.round(variableCostPerKm(cls) * MARGIN_MULTIPLE)
-}
-
-export const LOAD_MULT: Record<string, number>   = { general: 1.0, fragile: 1.2, perishable: 1.15, hazardous: 1.5, heavy_machinery: 1.3 }
 
 // Platform fee — DISABLED for the pilot, and NEVER shown inside a customer quote.
 // Founder rule (2026-08): no platform fee until at least 5 transporters are onboarded,
@@ -173,11 +129,13 @@ export const QuoteBody = z.object({
 export type QuoteInput = z.infer<typeof QuoteBody>
 
 export type QuoteResult = {
+  /** Trip cost before handling (truck running + crew + tolls). */
   base_price: number
+  /** Retired with the rate card; weight now enters through the truck and handling. Always 0. */
   weight_surcharge: number
-  /** Fixed per-trip loading/handling cost, passed through at cost. */
+  /** Loading/unloading for this load's weight and type. */
   handling_fee: number
-  /** Derived rate actually used, so the caller can show its working. */
+  /** The indicative rate per km, so the caller can show its working. */
   rate_per_km: number
   total_price: number
   platform_fee: number
@@ -185,18 +143,16 @@ export type QuoteResult = {
   driver_receives: number
   currency: 'INR'
   version: string
+  /** The legacy flat class breakdown (kept on the wire for vehicle_class and older readers). */
   cost_breakdown: CostBreakdown
   /**
-   * The REAL operating-cost floor from the CV-Parc norms (lib/cost-engine.ts),
-   * when it could be resolved. This is the additive, data-backed successor to the
-   * flat `cost_breakdown` above: every line item + running + total_direct + floor.
-   *
-   * null when the norm tables could not be read — the commercial split above does
-   * not depend on it, so a norms outage degrades to a quote without the floor
-   * rather than a failed quote. In production the tables are seeded, so it is
-   * populated. Carried in breakdown_json; adds no top-level contract break.
+   * The REAL operating-cost floor from the CV-Parc norms (lib/cost-engine.ts), when it could be
+   * resolved; null when the norm tables could not be read. Used for the floor/quote/market
+   * reconciliation, not for the price.
    */
   cost_floor: CostFloorBreakdown | null
+  /** Every line of the price: trip cost, carrier return, market correction. */
+  trip_estimate: TripEstimate
   /** Whether this number is the charge or a benchmark. See quoteKind. */
   quote_kind: QuoteKind
   /**
@@ -211,42 +167,48 @@ export type QuoteResult = {
   basis: string
 }
 
+const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+
 /**
  * The shipper-facing sentence explaining the number. Kept next to the maths so
  * the wording cannot drift from the arithmetic it describes.
  */
-function quoteBasis(kind: QuoteKind, vehicleClass: VehicleClass, rate: number, distanceKm: number): string {
-  const derivation = `₹${rate}/km for a ${vehicleClass} over ${distanceKm} km, derived from BharatTruck's operating-cost model`
+function quoteBasis(kind: QuoteKind, e: TripEstimate): string {
+  const derivation =
+    `Indicative rate for a ${e.model_category} over ${Math.round(e.distance_km)} km: trip cost ${inr(e.trip_cost)} ` +
+    `(truck running, driver & helper, tolls, handling) + ${e.carrier_return_pct}% carrier margin, × ${e.market_correction} market correction`
   return kind === 'advisory'
     // Names the actual payee. "Indicative"/"approximate" would only soften the
     // number while still implying the platform is the one charging it.
-    ? `Reference estimate: ${derivation}. You pay the winning carrier's bid — this is a benchmark, not the price.`
+    ? `Reference estimate — ${derivation}. You pay the winning carrier's bid — this is a benchmark, not the price.`
     : `${derivation}. This is the price charged for this booking.`
 }
 
 /**
- * @param costFloor Pre-resolved REAL cost floor from lib/cost-engine.ts, or null.
- *   The engine's loaders are async (they read the seeded norm tables), so the
- *   route resolves the floor and passes it in here; computeQuote itself stays
- *   synchronous and pure. Omitting the argument yields `cost_floor: null`, which
- *   is byte-compatible with every caller that predates this field.
+ * @param estimate The trip estimate resolved by the route (truck norms + route tolls). The norm
+ *   loaders are async, so the route resolves it and passes it in; computeQuote stays synchronous
+ *   and pure. Omitted, it is built here from class typicals and class toll rates — the same
+ *   structure, without the truck's own norms.
+ * @param costFloor The CV-Parc floor the estimate was built on, carried for the reconciliation.
  */
-export function computeQuote(input: QuoteInput, costFloor?: CostFloorBreakdown | null): QuoteResult {
-  const { distance_km, vehicle_type, load_type, weight_kg } = input
-
+export function computeQuote(
+  input: QuoteInput,
+  estimate?: TripEstimate | null,
+  costFloor?: CostFloorBreakdown | null,
+): QuoteResult {
+  const { distance_km, vehicle_type } = input
   const vehicleClass: VehicleClass = VEHICLE_TYPE_TO_CLASS[vehicle_type] ?? 'MCV'
-  const rate = ratePerKm(vehicle_type)
+  const e = estimate ?? buildTripEstimate({
+    distance_km,
+    weight_kg: input.weight_kg,
+    load_type: input.load_type,
+    model_category: input.model_category || (vehicle_type ? resolveModelCategory(input) : categoryForWeightKg(input.weight_kg)),
+    emission_norm: input.emission_norm,
+    truck_age: input.truck_age,
+    floor: null,
+  })
 
-  const base         = Math.ceil(distance_km * rate * (LOAD_MULT[load_type] ?? 1.0))
-  const wt_surcharge = weight_kg > 5000 ? Math.ceil((weight_kg - 5000) / 1000) * 500 : 0
-
-  // Handling is a FIXED per-trip cost (loading/unloading labour), so a purely
-  // per-km price leaves it uncovered — and the shorter the trip, the bigger the
-  // hole. A 50km HCV run bills 3,000 against 2,836 of cost, of which 1,000 is
-  // this. Passed through at cost, not marked up: the margin is on the movement.
-  const handling     = HANDLING_BASE[vehicleClass]
-
-  const total        = base + wt_surcharge + handling
+  const total = e.shipper_indicative
   // No platform fee during the pilot (see PLATFORM_FEE_ENABLED). The field stays on the
   // quote for wire stability, pinned to 0: settlement pays the payees the whole amount,
   // so the quote must not imply — or show — a cut that is never taken.
@@ -259,19 +221,20 @@ export function computeQuote(input: QuoteInput, costFloor?: CostFloorBreakdown |
   const kind = quoteKind(input.booking_type)
 
   return {
-    base_price: base,
-    weight_surcharge: wt_surcharge,
-    handling_fee: handling,
-    rate_per_km: rate,
+    base_price: e.trip_cost - e.handling,
+    weight_surcharge: 0,
+    handling_fee: e.handling,
+    rate_per_km: Math.round((total / distance_km) * 100) / 100,
     total_price: total,
     platform_fee,
     shipper_pays: total,
     driver_receives: total - platform_fee,
     currency: 'INR',
-    version: 'v2-cost-derived',
+    version: 'v3-trip-estimate',
     cost_breakdown: costBreakdown(vehicleClass, distance_km),
     cost_floor: costFloor ?? null,
+    trip_estimate: e,
     quote_kind: kind,
-    basis: quoteBasis(kind, vehicleClass, rate, distance_km),
+    basis: quoteBasis(kind, e),
   }
 }
