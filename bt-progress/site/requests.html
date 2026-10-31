@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#fbb314">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='168 198 274 276'%3E%3Cpath fill='%23fbb314' fill-rule='evenodd' d='M243 202H368Q393 202 393 227V318Q393 324 399 327L430 340Q438 344 438 352V410Q438 420 428 420H362L349 405H261L248 420H182Q172 420 172 410V352Q172 344 180 340L211 327Q218 324 218 318V227Q218 202 243 202ZM236 258H375Q381 258 381 264V306Q381 312 375 312H236Q230 312 230 306V264Q230 258 236 258Z'/%3E%3C/svg%3E">
+<title>BharatTruck Requests</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="./portal.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="logo" href="./" aria-label="BharatTruck Build Log">
+      <svg viewBox="168 198 274 276" aria-hidden="true"><path fill="#fbb314" fill-rule="evenodd" d="M243 202H368Q393 202 393 227V318Q393 324 399 327L430 340Q438 344 438 352V410Q438 420 428 420H362L349 405H261L248 420H182Q172 420 172 410V352Q172 344 180 340L211 327Q218 324 218 318V227Q218 202 243 202ZM236 258H375Q381 258 381 264V306Q381 312 375 312H236Q230 312 230 306V264Q230 258 236 258ZM211 352L244 364Q250 366 250 372V385Q250 391 244 389L210 377Q205 375 205 370V357Q205 350 211 352ZM399 352L366 364Q360 366 360 372V385Q360 391 366 389L400 377Q405 375 405 370V357Q405 350 399 352Z"/><rect x="176" y="268" width="30" height="48" rx="8" fill="#fbb314"/><rect x="405" y="268" width="30" height="48" rx="8" fill="#fbb314"/><rect x="178" y="432" width="50" height="38" rx="8" fill="#fbb314"/><rect x="384" y="432" width="50" height="38" rx="8" fill="#fbb314"/></svg>
+      <span class="word">Bharat<b>Truck</b></span>
+    </a>
+    <nav class="nav">
+      <a class="navlink" href="./">Build Log</a>
+      <a class="navlink" href="./requests.html" aria-current="page">Requests</a>
+    </nav>
+  </div>
+
+  <header class="head">
+    <div class="eyebrow">BharatTruck · Project progress</div>
+    <h1>Requests</h1>
+    <p class="lede">Ask for a change, a new feature or an add-on. The team replies here, sets a status and links the work in the Build Log when it ships.</p>
+  </header>
+
+  <!-- Access code gate -->
+  <section class="card" id="gate" style="margin-top:22px" hidden>
+    <h2>Enter your access code</h2>
+    <p class="hint">The BharatTruck team gave you a code for this page. It is remembered on this device.</p>
+    <form id="gate-form" autocomplete="off">
+      <div class="field">
+        <label for="code">Access code</label>
+        <input class="in" id="code" type="password" required autocomplete="current-password">
+      </div>
+      <div id="gate-msg"></div>
+      <div class="row-end"><button class="btn primary" type="submit">Continue</button></div>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <p class="who" style="margin-top:14px"><span id="who"></span> · <button type="button" class="linkbtn" id="signout">Use a different code</button></p>
+
+    <!-- New request -->
+    <section class="card" style="margin-top:12px">
+      <h2>New request</h2>
+      <p class="hint">One request per idea works best — it is easier to plan and track.</p>
+      <form id="new-form">
+        <div class="field">
+          <span class="lbl" id="type-l">What kind of request?</span>
+          <div class="types" id="types" role="radiogroup" aria-labelledby="type-l"></div>
+        </div>
+        <div class="field">
+          <label for="title">Short title</label>
+          <input class="in" id="title" maxlength="140" required placeholder="e.g. Let drivers use the app in Hindi">
+        </div>
+        <div class="field">
+          <label for="details">Details</label>
+          <textarea class="in" id="details" maxlength="5000" required placeholder="What should change, who it is for, and why it matters. Screens, examples and deadlines help."></textarea>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="area">Part of the app</label>
+            <select class="in" id="area"></select>
+          </div>
+          <div class="field">
+            <label for="priority">How important?</label>
+            <select class="in" id="priority"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="name">Your name <span class="opt">(optional)</span></label>
+          <input class="in" id="name" maxlength="80" autocomplete="name">
+        </div>
+        <div id="new-msg"></div>
+        <div class="row-end"><button class="btn primary" type="submit" id="new-btn">Send request</button></div>
+      </form>
+    </section>
+
+    <div class="filters" id="filters" role="group" aria-label="Filter by status" style="margin-top:24px"></div>
+    <main id="list" style="margin-top:14px"></main>
+  </div>
+
+  <div class="foot" style="margin-top:28px">
+    <a href="./">Back to the Build Log</a>
+    <span class="sep" aria-hidden="true"></span>
+    <span>Requests are visible only to people with an access code.</span>
+    <span class="brand">BharatTruck</span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var TYPE = { feature: 'New feature', change: 'Change', addon: 'Add-on', bug: 'Something broken', question: 'Question' };
+  var PRI = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
+  var STATUS = { new: 'New', reviewing: 'Reviewing', planned: 'Planned', in_progress: 'In progress', done: 'Done', declined: 'Not planned' };
+  var KEY = 'bt-portal-code';
+  var S = { code: '', role: null, meta: null, tickets: [], filter: 'open', type: 'feature' };
+
+  function get(k) { try { return localStorage.getItem(k) || '' } catch (e) { return '' } }
+  function set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k) } catch (e) {} }
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function msg(id, kind, text) { var box = document.getElementById(id); box.textContent = ''; if (text) box.appendChild(el('div', 'msg ' + kind, text)); }
+  function when(iso) { var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+
+  function api(method, path, body) {
+    return fetch(path, {
+      method: method,
+      headers: Object.assign({ 'x-portal-code': S.code }, body ? { 'content-type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) { var e = new Error(j.error || 'Something went wrong — try again'); e.status = r.status; throw e; }
+        return j.data;
+      });
+    });
+  }
+
+  function showGate(text) {
+    document.getElementById('app').hidden = true;
+    document.getElementById('gate').hidden = false;
+    msg('gate-msg', 'err', text || '');
+    document.getElementById('code').focus();
+  }
+
+  function start(code) {
+    S.code = code;
+    return api('POST', '/api/session', { code: code }).then(function (d) {
+      S.role = d.role; S.meta = d; set(KEY, code);
+      document.getElementById('gate').hidden = true;
+      document.getElementById('app').hidden = false;
+      document.getElementById('who').textContent = d.role === 'team' ? 'Signed in as the BharatTruck team' : 'Signed in as the client';
+      form(); return load();
+    }).catch(function (e) { set(KEY, ''); showGate(e.message); });
+  }
+
+  function load() {
+    return api('GET', '/api/tickets').then(function (d) { S.tickets = d.tickets || []; render(); })
+      .catch(function (e) { if (e.status === 401) return showGate(e.message); document.getElementById('list').textContent = e.message; });
+  }
+
+  function form() {
+    var types = document.getElementById('types'); types.textContent = '';
+    S.meta.types.forEach(function (t) {
+      var b = el('button', 'chip', TYPE[t] || t); b.type = 'button'; b.setAttribute('role', 'radio');
+      b.setAttribute('aria-pressed', String(S.type === t)); b.setAttribute('aria-checked', String(S.type === t));
+      b.addEventListener('click', function () { S.type = t; form(); });
+      types.appendChild(b);
+    });
+    var area = document.getElementById('area');
+    if (!area.options.length) S.meta.areas.forEach(function (a) { area.appendChild(new Option(a, a)); });
+    var pri = document.getElementById('priority');
+    if (!pri.options.length) { S.meta.priorities.forEach(function (p) { pri.appendChild(new Option(PRI[p] || p, p)); }); pri.value = 'normal'; }
+    // The name is remembered per role, so a team reply on a shared device is never signed with the client's name.
+    document.getElementById('name').value = get('bt-portal-name-' + S.role);
+  }
+
+  function render() {
+    var groups = [
+      { value: 'open', label: 'Open', test: function (t) { return t.status !== 'done' && t.status !== 'declined'; } },
+      { value: 'done', label: 'Done', test: function (t) { return t.status === 'done'; } },
+      { value: 'declined', label: 'Not planned', test: function (t) { return t.status === 'declined'; } },
+      { value: 'all', label: 'All', test: function () { return true; } },
+    ];
+    var f = document.getElementById('filters'); f.textContent = '';
+    f.appendChild(el('span', 'k', 'Show'));
+    groups.forEach(function (g) {
+      var n = S.tickets.filter(g.test).length;
+      var b = el('button', 'chip', g.label + ' · ' + n); b.type = 'button';
+      b.setAttribute('aria-pressed', String(S.filter === g.value));
+      b.addEventListener('click', function () { S.filter = g.value; render(); });
+      f.appendChild(b);
+    });
+    var test = groups.filter(function (g) { return g.value === S.filter; })[0].test;
+    var list = document.getElementById('list'); list.textContent = '';
+    var rows = S.tickets.filter(test);
+    if (!rows.length) { list.appendChild(el('p', 'empty', S.tickets.length ? 'Nothing here.' : 'No requests yet — the first one goes above.')); return; }
+    rows.forEach(function (t) { list.appendChild(card(t)); });
+  }
+
+  function card(t) {
+    var a = el('article', 'ticket s-' + t.status);
+    var r = el('div', 'row1');
+    r.appendChild(el('span', 'pill s-' + t.status, STATUS[t.status] || t.status));
+    r.appendChild(el('span', 'pill', TYPE[t.type] || t.type));
+    r.appendChild(el('span', 'pill', t.area));
+    if (t.priority !== 'normal') r.appendChild(el('span', 'pill pri-' + t.priority, PRI[t.priority]));
+    if (t.pr) r.appendChild(el('span', 'pill pr', 'PR #' + t.pr));
+    r.appendChild(el('span', 'pill id', t.id));
+    r.appendChild(el('span', 'when', when(t.created_at)));
+    a.appendChild(r);
+    a.appendChild(el('h3', null, t.title));
+    a.appendChild(el('p', 'details', t.details));
+    a.appendChild(el('p', 'who', 'Raised by ' + t.raised_by));
+
+    var th = el('div', 'thread');
+    (t.thread || []).forEach(function (e) {
+      if (e.kind === 'status') { th.appendChild(el('div', 'event', when(e.at) + ' · ' + e.by_name + ' moved this to ' + (STATUS[e.to] || e.to))); return; }
+      var s = el('div', 'say' + (e.by_role === 'team' ? ' team' : ''));
+      var by = el('div', 'by'); by.appendChild(el('span', null, e.by_name + (e.by_role === 'team' ? ' · BharatTruck' : '')));
+      var tm = el('time', null, when(e.at)); tm.dateTime = e.at; by.appendChild(tm);
+      s.appendChild(by); s.appendChild(el('p', null, e.text));
+      th.appendChild(s);
+    });
+
+    var rep = el('form', 'reply');
+    var ta = el('textarea', 'in'); ta.maxLength = 2000; ta.placeholder = 'Reply or add detail…'; ta.setAttribute('aria-label', 'Reply to ' + t.id);
+    rep.appendChild(ta);
+    var bar = el('div', 'teambar');
+    var st = null, pr = null;
+    if (S.role === 'team') {
+      st = el('select', 'in'); st.setAttribute('aria-label', 'Status');
+      S.meta.statuses.forEach(function (s) { st.appendChild(new Option(STATUS[s] || s, s)); }); st.value = t.status;
+      pr = el('input', 'in'); pr.type = 'number'; pr.min = '1'; pr.placeholder = 'PR #'; pr.style.width = '96px'; pr.setAttribute('aria-label', 'Linked PR number');
+      if (t.pr) pr.value = String(t.pr);
+      bar.appendChild(st); bar.appendChild(pr);
+    }
+    var btn = el('button', 'btn ghost', S.role === 'team' ? 'Update' : 'Reply'); btn.type = 'submit';
+    var spacer = el('span'); spacer.style.flex = '1'; bar.appendChild(spacer); bar.appendChild(btn);
+    rep.appendChild(bar);
+    var note = el('div'); rep.appendChild(note);
+    rep.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var body = {}; var name = document.getElementById('name').value.trim(); if (name) body.name = name;
+      if (ta.value.trim()) body.comment = ta.value;
+      if (st && st.value !== t.status) body.status = st.value;
+      if (pr && String(pr.value || '') !== String(t.pr || '')) body.pr = pr.value ? Number(pr.value) : null;
+      if (!body.comment && body.status === undefined && body.pr === undefined) { note.textContent = ''; note.appendChild(el('div', 'msg err', 'Write a reply first.')); return; }
+      btn.disabled = true;
+      api('PATCH', '/api/tickets/' + encodeURIComponent(t.id), body)
+        .then(function (u) { S.tickets = S.tickets.map(function (x) { return x.id === u.id ? u : x; }); render(); })
+        .catch(function (e) { btn.disabled = false; note.textContent = ''; note.appendChild(el('div', 'msg err', e.message)); });
+    });
+    th.appendChild(rep);
+    a.appendChild(th);
+    return a;
+  }
+
+  document.getElementById('gate-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var c = document.getElementById('code').value.trim();
+    if (c) start(c);
+  });
+  document.getElementById('signout').addEventListener('click', function () { set(KEY, ''); S.code = ''; document.getElementById('code').value = ''; showGate(''); });
+
+  document.getElementById('new-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var b = document.getElementById('new-btn'); b.disabled = true; msg('new-msg', '', '');
+    var name = document.getElementById('name').value.trim(); set('bt-portal-name-' + S.role, name);
+    api('POST', '/api/tickets', {
+      type: S.type,
+      title: document.getElementById('title').value,
+      details: document.getElementById('details').value,
+      area: document.getElementById('area').value,
+      priority: document.getElementById('priority').value,
+      name: name,
+    }).then(function (t) {
+      S.tickets.unshift(t); S.filter = 'open'; render();
+      document.getElementById('title').value = ''; document.getElementById('details').value = '';
+      msg('new-msg', 'ok', 'Sent — reference ' + t.id + '. The team will reply here.');
+    }).catch(function (e) { msg('new-msg', 'err', e.message); })
+      .then(function () { b.disabled = false; });
+  });
+
+  var saved = get(KEY);
+  if (saved) start(saved); else showGate('');
+})();
+</script>
+</body>
+</html>

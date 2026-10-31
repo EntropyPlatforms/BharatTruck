@@ -111,6 +111,8 @@ export function parseClientLog(body) {
     if (key === 'areas') out.areas = normaliseAreas(value.split(','))
     else if (key === 'hidden') out.hidden = /^(true|yes|1)$/i.test(value)
     else if (key === 'title' || key === 'summary' || key === 'see') out[key] = value
+    // 'body' was used for the summary in some PR descriptions; read it rather than drop it.
+    else if (key === 'body' && !out.summary) out.summary = value
   }
   return out
 }
