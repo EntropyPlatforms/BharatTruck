@@ -60,6 +60,8 @@ jobs:
             packages/shared: ['packages/shared/**', '.github/workflows/ci.yml']
             # bt-app is the ONE front-end (D-36); driver/shipper/fleet/bt-ops-web were retired 2026-09-26.
             bt-app: ['bt-app/**', '.github/workflows/ci.yml']
+            # The client progress portal: its server + requests API carry tests (node --test).
+            bt-progress: ['bt-progress/**', '.github/workflows/ci.yml']
             bt-gateway: ['bt-gateway/**', '.github/workflows/ci.yml']
       - id: pkgs
         name: strip bt-gateway (no package.json) from the build matrix list
