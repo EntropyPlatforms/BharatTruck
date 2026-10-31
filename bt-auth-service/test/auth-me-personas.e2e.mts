@@ -145,6 +145,8 @@ async function main() {
     id: 'u-ship', phone: '9812345678', email: 'ship@example.com', full_name: 'Shipper Singh',
     avatar_url: null, role: 'shipper', gstin: null, primary_persona: 'shipper',
     email_verified: true, google_sub: null, created_at: '2026-01-01T00:00:00Z',
+    // Billing address (PATCH /auth/me/address, Settings → Billing address). Null until saved.
+    address: null, city: null, state: null, pincode: null,
   }
   for (const [k, v] of Object.entries(expected)) {
     check(`user.${k} unchanged`, k in u && u[k] === v, `(got ${JSON.stringify(u[k])})`)
