@@ -97,7 +97,7 @@ test('without codes configured the API says not set up (503), the page still wor
   await new Promise((r) => s.listen(0, r))
   const b = `http://127.0.0.1:${s.address().port}`
   assert.equal((await fetch(b + '/api/tickets', { headers: { 'x-portal-code': 'x' } })).status, 503)
-  assert.equal((await (await fetch(b + '/healthz')).json()).tickets, 'not_configured')
+  assert.equal((await (await fetch(b + '/health')).json()).tickets, 'not_configured')
   assert.equal((await fetch(b + '/')).status, 200)
   s.close()
 })
