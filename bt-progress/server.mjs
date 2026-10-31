@@ -5,7 +5,8 @@
 //   GET   /api/tickets            → { tickets }                   (code in x-portal-code)
 //   POST  /api/tickets            { type, title, details, area, priority, name } → ticket
 //   PATCH /api/tickets/:id        { comment?, status?, pr?, name? } → ticket   (status/pr: team)
-//   GET   /healthz                → { ok, tickets: 'ready' | 'not_configured' }
+//   GET   /health                 → { ok, tickets: 'ready' | 'not_configured' }
+//         (not /healthz: Cloud Run's front end answers that path itself with a 404)
 //
 // Env: PORT (8080) · TICKETS_BUCKET · PORTAL_CLIENT_CODE · PORTAL_TEAM_CODE. Without a bucket the
 // API answers 503 in production and keeps tickets in memory elsewhere (local preview only).
@@ -129,7 +130,7 @@ export function createPortalServer({ store, env = process.env, log = console } =
   return createServer(async (req, res) => {
     const path = new URL(req.url ?? '/', 'http://x').pathname
     try {
-      if (path === '/healthz') return send(res, 200, { ok: true, tickets: configured() ? 'ready' : 'not_configured' })
+      if (path === '/health') return send(res, 200, { ok: true, tickets: configured() ? 'ready' : 'not_configured' })
       if (path.startsWith('/api/')) return await api(req, res, path)
       return await file(req, res, path)
     } catch (err) {

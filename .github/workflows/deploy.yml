@@ -445,3 +445,13 @@ jobs:
           done
           echo "::error::bt-progress deployed but never served progress.json (last: $CODE)"
           exit 1
+      - name: Report whether client Requests is set up (never fails the deploy)
+        run: |
+          set -uo pipefail
+          URL=$(gcloud run services describe bt-progress --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          STATE=$(curl -sS --max-time 15 "$URL/health" 2>/dev/null | grep -o '"tickets":"[a-z_]*"' | cut -d'"' -f4)
+          if [ "$STATE" = "ready" ]; then
+            echo "::notice title=Client requests::ready at $URL/requests.html"
+          else
+            echo "::warning title=Client requests::not set up (${STATE:-no answer}) - see bt-progress/README.md, one-time setup"
+          fi
