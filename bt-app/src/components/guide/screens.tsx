@@ -108,22 +108,23 @@ function AppShell({ c, children }: { c: Ctx; children: ReactNode }) {
   const who = PERSONA_META[c.persona].who
   const navItem = (it: { id: string; label: string; icon: ReactNode }) => (
     <div key={it.id} {...c.g(it.id)} className={cx(
-      'flex items-center gap-3 rounded-xl px-3 py-2 text-[0.9375rem] [&>svg]:w-5 [&>svg]:h-5',
+      'flex items-center gap-3 rounded-xl px-3 py-1 text-[0.9375rem] [&>svg]:w-5 [&>svg]:h-5',
       active === it.id ? 'bg-gradient-to-r from-brand-100 to-brand-50 text-ink font-bold shadow-[inset_0_0_0_1px_rgba(242,165,22,0.18)] [&>svg]:text-brand-600' : 'text-gray-600 [&>svg]:text-gray-500',
     )}>{it.icon}{it.label}</div>
   )
   return (
     <div className="flex h-full">
-      <aside className="w-60 shrink-0 bg-white border-r border-gray-200 flex flex-col px-3 py-4 gap-1">
-        <div className="flex items-center gap-2 px-2 pb-3"><BrandMark className="w-8 h-8" /><Wordmark className="text-xl" /></div>
-        <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gradient-to-br from-brand-50/70 to-white px-2.5 py-2">
+      {/* The fleet menu is long; it scrolls (bar hidden) if it ever outgrows the 800px canvas. */}
+      <aside data-guide-scroll className="w-60 shrink-0 bg-white border-r border-gray-200 flex flex-col px-3 py-3 gap-0.5 overflow-y-auto [scrollbar-width:none]">
+        <div className="flex items-center gap-2 px-2 pb-2"><BrandMark className="w-8 h-8" /><Wordmark className="text-xl" /></div>
+        <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gradient-to-br from-brand-50/70 to-white px-2.5 py-2">
           <span className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-sm font-bold">{who.split(' ').map((w) => w[0]).join('')}</span>
           <span className="min-w-0"><span className="block text-sm font-bold text-gray-900 truncate">{who}</span>
             <span className="block text-xs text-gray-500 truncate">{c.persona === 'fleet' && c.state.on.company ? DEMO.fleet.company : DEMO[c.persona].email}</span></span>
         </div>
         {groups.map((g, i) => (
           <div key={i} className="space-y-0.5">
-            {g.cap && <div className="px-3 pt-3 pb-1 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-gray-400">{g.cap}</div>}
+            {g.cap && <div className="px-3 pt-2 pb-0.5 text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-gray-400">{g.cap}</div>}
             {g.items.map(navItem)}
           </div>
         ))}
@@ -421,7 +422,7 @@ function PostScreen({ c }: { c: Ctx }) {
             <div className="grid grid-cols-2 gap-3 items-end">
               <Field c={c} k="weight" label="Weight * (kg)" placeholder="5000" guide="weight" />
               <div><div className={LABEL}>Vehicle type *</div>
-                <div className={SEG_WRAP}>{['Mini truck', 'LCV', 'HCV', 'Trailer'].map((t) => <span key={t} className={t === cls ? SEG_ON : SEG_OFF}>{t}</span>)}</div></div>
+                <div className={SEG_WRAP}>{['Mini truck', 'LCV', 'HCV', 'Trailer'].map((t) => <span key={t} className={cx(t === cls ? SEG_ON : SEG_OFF, 'px-3 whitespace-nowrap')}>{t}</span>)}</div></div>
             </div>
           </Section>
           <Section n={4} title="Schedule" sub="When should the truck pick up the load?">
