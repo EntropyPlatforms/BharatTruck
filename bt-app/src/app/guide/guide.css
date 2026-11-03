@@ -21,3 +21,7 @@
 @media (prefers-reduced-motion: reduce) {
   .guide-pulse, .guide-bounce-up, .guide-bounce-down { animation: none; }
 }
+
+/* The re-drawn app is a fixed 1280×800 canvas sized in rem. Wide screens raise the root font size
+   (globals.css: 17–20px from 1700px), which would overflow it; keep 16px while the guide is open. */
+html:has(#guide-canvas) { font-size: 16px; }
