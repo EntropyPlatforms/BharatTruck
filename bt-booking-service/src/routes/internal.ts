@@ -9,6 +9,10 @@ import { dispatchBlockedReason, dispatchOnce } from '../lib/notifications/dispat
 import { mailer } from '../lib/notifications/mailer.js'
 import { runAlertSweep } from '../lib/alerts/service.js'
 import { AlertsNotMigratedError } from '../lib/alerts/types.js'
+import { resolveWhatsAppConfig } from '../lib/whatsapp/config.js'
+import { CloudApiSender } from '../lib/whatsapp/client.js'
+import { dispatchWhatsAppOnce } from '../lib/whatsapp/service.js'
+import { WhatsAppNotMigratedError } from '../lib/whatsapp/repository.js'
 
 // Which alert rules a sweep runs. Two Cloud Scheduler jobs: frequent (GPS silence, every
 // 5 minutes) and daily (late starts, unpaid trips, licences — 08:00 IST). See docs/BIBLE.md §7.1.
@@ -213,6 +217,29 @@ export async function internalRoutes(app: FastifyInstance) {
       }
       req.log.error(err, 'alert sweep failed')
       return reply.status(500).send({ success: false, error: 'Alert sweep failed' })
+    }
+  })
+
+  // POST /internal/whatsapp/dispatch
+  // Send the queued WhatsApp alerts. Its own Cloud Scheduler job (every minute) rather than
+  // a passenger on /notifications/dispatch, because that route refuses with 503 whenever
+  // email is not configured — WhatsApp must not depend on SMTP. Overlapping runs are safe:
+  // rows are claimed with a compare-and-swap. Loud 503s, like the email drain, so a
+  // misconfigured job goes red instead of quietly doing nothing.
+  app.post('/whatsapp/dispatch', async (req, reply) => {
+    const { config, missing } = resolveWhatsAppConfig()
+    if (!config) {
+      return reply.status(503).send({ success: false, error: `WhatsApp is not configured (missing ${missing.join(', ')})`, code: 'WHATSAPP_NOT_CONFIGURED' })
+    }
+    try {
+      const result = await dispatchWhatsAppOnce({ config, sender: new CloudApiSender(config), log: req.log })
+      return reply.send({ success: true, data: result })
+    } catch (err) {
+      if (err instanceof WhatsAppNotMigratedError) {
+        return reply.status(503).send({ success: false, error: err.message, code: err.code })
+      }
+      req.log.error(err, 'whatsapp dispatch failed')
+      return reply.status(500).send({ success: false, error: 'WhatsApp dispatch failed' })
     }
   })
 }
