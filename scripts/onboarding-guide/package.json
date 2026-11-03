@@ -1,0 +1,13 @@
+{
+  "name": "onboarding-guide-pdf",
+  "private": true,
+  "type": "module",
+  "description": "Regenerates bt-app/public/onboarding/BharatTruck-Onboarding-Guide.pdf from the /guide page.",
+  "scripts": {
+    "capture": "node capture.mjs http://localhost:3123",
+    "pdf": "node build-pdf.mjs ../../bt-app/public/onboarding/BharatTruck-Onboarding-Guide.pdf"
+  },
+  "dependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}

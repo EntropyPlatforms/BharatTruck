@@ -47,8 +47,13 @@ export function isPublicPath(pathname: string): boolean {
   return pathname === '/' || pathname === '/login' || pathname.startsWith('/auth')
 }
 
+/** The onboarding guide re-draws the app as it looks by day, so it never switches to dark. */
+export function isAlwaysLightPath(pathname: string): boolean {
+  return pathname === '/guide' || pathname.startsWith('/guide/')
+}
+
 export function applyTheme(choice: ThemeChoice, pathname: string = window.location.pathname): void {
-  const effective = isPublicPath(pathname) ? 'auto' : choice
+  const effective = isAlwaysLightPath(pathname) ? 'light' : isPublicPath(pathname) ? 'auto' : choice
   const dark = effective === 'dark' || (effective === 'auto' && isNightInIndia())
   document.documentElement.classList.toggle('dark', dark)
 }
@@ -63,6 +68,7 @@ export const THEME_BOOT_SCRIPT =
   "(function(){try{var p=location.pathname,c=null;" +
   "try{c=localStorage.getItem('" + THEME_KEY + "')}catch(e){}" +
   "if(p==='/'||p==='/login'||p.indexOf('/auth')===0||(c!=='dark'&&c!=='light'))c='auto';" +
+  "if(p==='/guide'||p.indexOf('/guide/')===0)c='light';" +
   "var n=new Date(),h=Math.floor((n.getUTCHours()*60+n.getUTCMinutes()+330)/60)%24;" +
   "if(c==='dark'||(c==='auto'&&(h>=" + NIGHT_FROM + "||h<" + NIGHT_TO + ")))document.documentElement.classList.add('dark')" +
   "}catch(e){}})()"

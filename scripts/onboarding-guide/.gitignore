@@ -1,0 +1,5 @@
+node_modules/
+shots/
+steps.json
+guide.html
+*.pdf
