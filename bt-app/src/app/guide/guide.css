@@ -1,0 +1,23 @@
+/* Onboarding guide motion: the spotlight ring pulses, the arrow bounces toward the target. */
+@keyframes guide-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 183, 48, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(245, 183, 48, 0); }
+}
+@keyframes guide-bounce-up {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes guide-bounce-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(10px); }
+}
+.guide-pulse { animation: guide-pulse 1.4s ease-out infinite; }
+.guide-bounce-up { animation: guide-bounce-up 0.9s ease-in-out infinite; }
+.guide-bounce-down { animation: guide-bounce-down 0.9s ease-in-out infinite; }
+
+/* Screenshot mode (?shot=1): hold everything still. */
+.guide-shot .guide-pulse, .guide-shot .guide-bounce-up, .guide-shot .guide-bounce-down { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-pulse, .guide-bounce-up, .guide-bounce-down { animation: none; }
+}
