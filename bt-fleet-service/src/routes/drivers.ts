@@ -1,14 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
-  findDriverByPhone,
-  findDriverByEmail,
   getAffiliationForDriver,
   countVehiclesOwnedByDriver,
   getFleetDriverById,
   getInviteForDriver,
   hydrateDriverIdentities,
-  inviteDriver,
   listFleetDrivers,
   listPendingInvitesForDriver,
   requireDriver,
@@ -19,6 +16,13 @@ import { hasLiveAssignmentForDriver } from '../lib/assignment.js'
 import { addDriverToFleetSet, removeDriverFromFleetSet } from '../lib/redis.js'
 import { FleetError, parseOrThrow, type FleetDriverStatus } from '../lib/types.js'
 import { emitNotification } from '../lib/notify-emit.js'
+import {
+  BulkInviteBody,
+  countByStatus,
+  findInviteTarget,
+  inviteDriversInBulk,
+  sendInvite,
+} from '../lib/bulk-invite.js'
 
 // -----------------------------------------------------------
 // driverRoutes — the fleet roster (mounted at /fleet/drivers).
@@ -66,23 +70,30 @@ export async function driverRoutes(app: FastifyInstance) {
     const owner = await requireFleetAccess(req.user, 'manage_drivers')
     const body = parseOrThrow(InviteBody, req.body)
 
-    const driver = body.driver_email
-      ? await findDriverByEmail(body.driver_email)
-      : await findDriverByPhone(body.driver_phone!)
-    const affiliation = await inviteDriver(owner.id, driver.driver_id, req.user.userId)
-
-    // The invite is only actionable if the driver hears about it — until now it was
-    // visible ONLY to a driver who happened to open the in-app inbox.
-    emitNotification({
-      event: 'fleet_invite',
-      invite_id: affiliation.id,
-      driver_id: driver.driver_id,
-      fleet_owner_id: owner.id,
-    }, req.log)
+    const driver = await findInviteTarget(body)
+    // sendInvite also notifies the driver: the invite is only actionable if they hear about
+    // it — until then it was visible ONLY to a driver who happened to open the in-app inbox.
+    const affiliation = await sendInvite(owner.id, driver, req.user.userId, req.log)
 
     return reply.status(201).send({
       success: true,
       data: { ...affiliation, driver: { ...driver } },
+    })
+  })
+
+  // POST /fleet/drivers/invite/bulk — the same invitation for a whole list (CSV upload on the
+  // Drivers page). Same gate as one invite; each row runs the single invite's lookup + insert +
+  // notification (lib/bulk-invite.ts) and gets its own outcome, so one bad row never fails the
+  // rest. Still invitations only: drivers must already have an account and must accept.
+  app.post('/invite/bulk', async (req, reply) => {
+    const owner = await requireFleetAccess(req.user, 'manage_drivers')
+    const body = parseOrThrow(BulkInviteBody, req.body)
+
+    const results = await inviteDriversInBulk(owner.id, req.user.userId, body.drivers, req.log)
+
+    return reply.send({
+      success: true,
+      data: { total: results.length, counts: countByStatus(results), results },
     })
   })
 
