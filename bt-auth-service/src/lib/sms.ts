@@ -41,7 +41,7 @@ export class SmsSendError extends Error {
 
 export interface SmsProvider {
   /** Stable id, for the boot line and for tests. */
-  readonly name: 'console' | 'msg91' | 'twilio'
+  readonly name: 'console' | 'msg91' | 'twilio' | 'fast2sms'
   /**
    * Deliver a one-time code to a BARE 10-digit Indian mobile number (no +91, no
    * spaces — the route's zod schema has already enforced /^[6-9]\d{9}$/).
@@ -266,6 +266,89 @@ export class TwilioSmsProvider implements SmsProvider {
   }
 }
 
+// ── Fast2SMS ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fast2SMS (fast2sms.com) has two ways to send our code, chosen by FAST2SMS_ROUTE:
+ *
+ *   otp (default) — Fast2SMS's own OTP route. It sends on THEIR DLT-registered
+ *                   header and template ("… is your verification code …"), so it
+ *                   works before our own DLT registration clears. The account needs
+ *                   KYC and one wallet recharge of at least ₹100 first (error 996 /
+ *                   999). Only the API key is needed.
+ *   dlt           — our own registered header and template, added in Fast2SMS's DLT
+ *                   Manager. Needs FAST2SMS_SENDER_ID (the header) and
+ *                   FAST2SMS_MESSAGE_ID (the approved template's message id). The
+ *                   template must have exactly one {#var#}, which carries the code.
+ *
+ * Both go through POST /dev/bulkV2 with the API key in the `authorization` header —
+ * the key from the Dev API page, never the account password.
+ */
+export const FAST2SMS_REQUIRED_ENV = ['FAST2SMS_API_KEY'] as const
+export const FAST2SMS_DLT_REQUIRED_ENV = ['FAST2SMS_SENDER_ID', 'FAST2SMS_MESSAGE_ID'] as const
+
+export type Fast2SmsConfig = {
+  apiKey: string
+  route:  'otp' | 'dlt'
+  /** dlt route only. */
+  senderId:  string | null
+  messageId: string | null
+  baseUrl:   string
+  timeoutMs: number
+}
+
+/** Fast2SMS's envelope: `return` decides success; `message` is a string or a list. */
+type Fast2SmsReply = { return?: unknown; status_code?: unknown; message?: unknown }
+
+export class Fast2SmsProvider implements SmsProvider {
+  readonly name = 'fast2sms' as const
+
+  constructor(private readonly cfg: Fast2SmsConfig) {}
+
+  async sendOtp(phone: string, otp: string): Promise<void> {
+    const body = this.cfg.route === 'dlt'
+      ? { route: 'dlt', sender_id: this.cfg.senderId, message: this.cfg.messageId, variables_values: otp, numbers: phone }
+      // The OTP route only accepts a numeric value — ours is crypto.randomInt digits.
+      : { route: 'otp', variables_values: otp, numbers: phone }
+
+    let res: Response
+    try {
+      res = await fetch(`${this.cfg.baseUrl}/dev/bulkV2`, {
+        method: 'POST',
+        headers: {
+          authorization:  this.cfg.apiKey,
+          'content-type': 'application/json',
+          accept:         'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.cfg.timeoutMs),
+      })
+    } catch (err) {
+      throw new SmsSendError(this.name, err instanceof Error ? err.message : 'request failed')
+    }
+
+    const raw = await res.text().catch(() => '')
+    let parsed: Fast2SmsReply | null = null
+    try { parsed = JSON.parse(raw) as Fast2SmsReply } catch { parsed = null }
+
+    // Success is `return: true` on a 2xx — nothing else. A 200 without it (or an
+    // unparseable body) is treated as a failure rather than a delivery.
+    if (res.ok && parsed?.return === true) return
+
+    // Only the documented code and message are read: the raw body could echo the
+    // request, which carries the live code. The code is what an operator acts on —
+    // 412 bad key, 416 empty wallet, 996 KYC pending, 999 first recharge pending,
+    // 424/425 template not matching DLT.
+    const code = typeof parsed?.status_code === 'number' || typeof parsed?.status_code === 'string' ? String(parsed.status_code) : null
+    const msg = Array.isArray(parsed?.message) ? (parsed!.message as unknown[]).filter(m => typeof m === 'string').join('; ') : parsed?.message
+    const detail = typeof msg === 'string' && msg ? msg.slice(0, 200).split(otp).join('******') : null
+    throw new SmsSendError(
+      this.name,
+      `HTTP ${res.status}${code ? ` code ${code}` : ''}${detail ? `: ${detail}` : ''}`,
+    )
+  }
+}
+
 // ── resolution ────────────────────────────────────────────────────────────────
 
 export type SmsProviderResolution = {
@@ -353,6 +436,35 @@ export function resolveSmsProvider(env: NodeJS.ProcessEnv = process.env): SmsPro
     }
   }
 
+  if (selected === 'fast2sms') {
+    const route = (env.FAST2SMS_ROUTE ?? '').trim().toLowerCase() || 'otp'
+    if (route !== 'otp' && route !== 'dlt') {
+      return {
+        provider: new ConsoleSmsProvider(env),
+        unwiredReason: `SMS_PROVIDER=fast2sms but FAST2SMS_ROUTE='${route.slice(0, 16)}' is not otp or dlt`,
+      }
+    }
+    const needed: readonly string[] = route === 'dlt' ? [...FAST2SMS_REQUIRED_ENV, ...FAST2SMS_DLT_REQUIRED_ENV] : FAST2SMS_REQUIRED_ENV
+    const missing = needed.filter(k => !(env[k] ?? '').trim())
+    if (missing.length > 0) {
+      return {
+        provider: new ConsoleSmsProvider(env),
+        unwiredReason: `SMS_PROVIDER=fast2sms but ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} unset`,
+      }
+    }
+    return {
+      provider: new Fast2SmsProvider({
+        apiKey:    env.FAST2SMS_API_KEY!.trim(),
+        route,
+        senderId:  route === 'dlt' ? env.FAST2SMS_SENDER_ID!.trim() : null,
+        messageId: route === 'dlt' ? env.FAST2SMS_MESSAGE_ID!.trim() : null,
+        baseUrl:   ((env.FAST2SMS_BASE_URL ?? '').trim() || 'https://www.fast2sms.com').replace(/\/+$/, ''),
+        timeoutMs: Number(env.SMS_TIMEOUT_MS) > 0 ? Number(env.SMS_TIMEOUT_MS) : 8000,
+      }),
+      unwiredReason: null,
+    }
+  }
+
   return {
     provider: new ConsoleSmsProvider(env),
     // Sliced: this is an unvalidated env value being written to a log.
@@ -378,7 +490,8 @@ export function getSmsProvider(): SmsProvider {
     if (unwiredReason) {
       console.warn(
         `[sms] ${unwiredReason} — phone OTPs are printed to this log and NOT sent by SMS. ` +
-        `Wiring needs TRAI DLT registration first (docs/BLOCKERS.md B-2).`,
+        `Quickest wiring: SMS_PROVIDER=fast2sms + FAST2SMS_API_KEY (its OTP route needs no DLT of our own); ` +
+        `msg91/twilio need TRAI DLT registration first (docs/BLOCKERS.md B-2).`,
       )
     } else {
       console.log(`[sms] provider=${provider.name} — phone OTPs are delivered by SMS`)
