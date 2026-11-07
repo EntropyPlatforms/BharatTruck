@@ -254,6 +254,17 @@ http {
       proxy_pass $me_summary_upstream;
     }
 
+    # The WhatsApp bot's webhook (bt-booking-service, routes mounted at /whatsapp). Meta calls
+    # it, not a browser: no user token, and the service rejects anything without Meta's
+    # X-Hub-Signature-256, which nginx passes through untouched along with the raw body.
+    # Meta delivers in bursts from a few addresses, so a wider burst than the default.
+    location /api/whatsapp/ {
+      limit_req zone=api_zone burst=60 nodelay;
+      set $whatsapp_upstream ${BOOKING_SERVICE_URL};
+      rewrite ^/api/whatsapp/(.*) /whatsapp/$1 break;
+      proxy_pass $whatsapp_upstream;
+    }
+
     # Maps & Tracking read-through (bt-tracking-service, routes mounted at /tracking).
     # App calls /api/tracking/route|eta|track/:bookingId ; service does its own JWT+RBAC.
     # Polled ~every 10s per booking, so a slightly higher burst than the default api routes.
