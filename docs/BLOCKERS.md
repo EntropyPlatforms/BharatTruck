@@ -82,6 +82,10 @@ way a phone OTP leaves the service. One `SmsProvider`, resolved once at boot:
 - **`ConsoleSmsProvider` — the default**, and what runs on every environment today. It prints the
   same two lines this service printed before the seam existed, so nothing about the pilot changes.
 - **`Msg91SmsProvider`** — a real MSG91 flow-API call, **unreachable without env vars**.
+- **`Fast2SmsProvider`** — Fast2SMS `/dev/bulkV2`. Its default `otp` route sends on Fast2SMS's own
+  DLT-registered header and template, so `SMS_PROVIDER=fast2sms` + `FAST2SMS_API_KEY` is enough to get
+  real SMS **before our own DLT registration** (account needs KYC and a one-time ₹100 recharge).
+  `FAST2SMS_ROUTE=dlt` switches to our own header/template (`FAST2SMS_SENDER_ID`, `FAST2SMS_MESSAGE_ID`).
 
 **The switch.** Live SMS is opt-in *and* all-or-nothing — `SMS_PROVIDER` must select a provider and
 every credential it needs must be non-empty, or the service logs one warning at boot and stays on the
