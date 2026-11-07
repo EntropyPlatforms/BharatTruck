@@ -336,7 +336,10 @@ function Coach({ rect, verb, pulse, scale }: { rect: Rect; verb: string; pulse: 
   const pad = 6
   // The canvas shrinks on small screens; the arrow and its label grow back so they stay readable.
   const grow = Math.min(2.4, Math.max(1, 0.9 / scale))
-  const r = { x: rect.x - pad, y: rect.y - pad, w: rect.w + pad * 2, h: rect.h + pad * 2 }
+  // Padded ring, kept inside the canvas so a full-width target doesn't lose its edge.
+  const x0 = Math.max(3, rect.x - pad), y0 = Math.max(3, rect.y - pad)
+  const x1 = Math.min(CANVAS_W - 3, rect.x + rect.w + pad), y1 = Math.min(CANVAS_H - 3, rect.y + rect.h + pad)
+  const r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
   const below = r.y + r.h + 110 < CANVAS_H - 10 || r.y < 120
   const labelW = 190
   const lx = Math.max(10, Math.min(CANVAS_W - labelW - 10, r.x + r.w / 2 - labelW / 2))
