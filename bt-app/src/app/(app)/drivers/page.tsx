@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  AlertTriangle, ChartColumn, Clock, Pencil, RotateCcw, Search, Star, UserRound, UserPlus,
+  AlertTriangle, ChartColumn, Clock, FileUp, Pencil, RotateCcw, Search, Star, UserRound, UserPlus,
   Users, Wallet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/app-shell'
 import { Card, CardHead, Empty, ErrorNote, InfoDot, Loading, Stat } from '@/components/stat'
 import { Avatar, COL_RULE, Modal, TD, TH, THEAD_ROW, TR, fmtPhone } from '@/components/fleet-ops/bits'
+import { BulkInviteDialog } from '@/components/fleet-ops/bulk-invite-dialog'
 import {
   ApiError, getDriverAnalytics, inviteDriver, listFleetDrivers, removeFleetDriver,
   updateFleetDriver,
@@ -89,6 +90,7 @@ export default function DriversPage() {
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
 
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [salaryTarget, setSalaryTarget] = useState<RosterRow | null>(null)
   const [removeTarget, setRemoveTarget] = useState<RosterRow | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -176,10 +178,16 @@ export default function DriversPage() {
         info="Fleet drivers see the job, not the price — you assign their truck and trip."
         subtitle={rows ? `${active.length} active · ${pending.length} invited · ${former.length} former` : undefined}
         actions={
-          <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
-            <UserPlus className="w-4 h-4" />
-            Invite driver
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setBulkOpen(true)} className={BTN_SECONDARY}>
+              <FileUp className="w-4 h-4" />
+              Upload drivers (CSV)
+            </button>
+            <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
+              <UserPlus className="w-4 h-4" />
+              Invite driver
+            </button>
+          </div>
         }
       />
 
@@ -196,13 +204,19 @@ export default function DriversPage() {
         <Card>
           <Empty
             art title="No drivers on the roster yet"
-            hint="Invite a driver by their BharatTruck phone number."
+            hint="Invite a driver by their BharatTruck phone number, or upload a list of drivers as a CSV."
             icon={<Users />}
             action={
-              <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
-                <UserPlus className="w-4 h-4" />
-                Invite driver
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
+                  <UserPlus className="w-4 h-4" />
+                  Invite driver
+                </button>
+                <button onClick={() => setBulkOpen(true)} className={BTN_SECONDARY}>
+                  <FileUp className="w-4 h-4" />
+                  Upload drivers (CSV)
+                </button>
+              </div>
             }
           />
         </Card>
@@ -474,6 +488,15 @@ export default function DriversPage() {
             setRows(prev => (prev ? [created, ...prev] : [created]))
             setInviteOpen(false)
           }}
+        />
+      )}
+
+      {bulkOpen && (
+        <BulkInviteDialog
+          onClose={() => setBulkOpen(false)}
+          // The bulk reply is per-row outcomes, not roster rows — re-read the roster so the new
+          // invitations land in "Pending invitation" exactly as the service now holds them.
+          onDone={() => { setBulkOpen(false); void load() }}
         />
       )}
 

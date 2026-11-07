@@ -360,7 +360,44 @@ export function inviteDriver(channel: { driver_phone: string } | { driver_email:
   })
 }
 
-export function updateFleetDriver(id: string, body: { monthly_salary_inr?: number; status?: 'suspended' | 'active' }) {
+/** Most rows one bulk invite accepts — mirrors BULK_INVITE_LIMIT in bt-fleet-service. */
+export const BULK_INVITE_LIMIT = 200
+
+export type BulkInviteRow = { name: string } & ({ driver_phone: string } | { driver_email: string })
+
+export type BulkInviteStatus =
+  | 'invited' | 'already_in_fleet' | 'already_invited' | 'unavailable'
+  | 'no_account' | 'duplicate' | 'invalid' | 'failed'
+
+export type BulkInviteResult = {
+  /** 1-based position in the submitted list. */
+  row: number
+  name: string | null
+  status: BulkInviteStatus
+  reason: string | null
+  invite_id: string | null
+  /** The account the row matched (null when it matched none, or is live in another fleet). */
+  driver: { driver_id: string; full_name: string | null; phone_number: string | null } | null
+}
+
+export type BulkInviteResponse = {
+  total: number
+  counts: Record<BulkInviteStatus, number>
+  results: BulkInviteResult[]
+}
+
+/**
+ * The single invite for a whole list (POST /fleet/drivers/invite/bulk). Each row is looked up
+ * and invited exactly as inviteDriver does and gets its own outcome — one bad row does not
+ * fail the rest. Still invitations only: no account is created, every driver must accept.
+ */
+export function inviteDriversBulk(drivers: BulkInviteRow[]) {
+  return request<BulkInviteResponse>('/fleet/drivers/invite/bulk', {
+    method: 'POST', body: JSON.stringify({ drivers }),
+  })
+}
+
+export function updateFleetDriver(id: string, body:{ monthly_salary_inr?: number; status?: 'suspended' | 'active' }) {
   return request<FleetDriver>(`/fleet/drivers/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 
