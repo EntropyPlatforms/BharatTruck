@@ -7,7 +7,7 @@ import { BookingError } from '../lib/types.js'
 // Saved-address book (D-020 / migration 0035). A shipper reuses the same 4-5 pickup points, so
 // the post-load form should be a pick, not a re-typed address and a re-dragged gate pin. Every
 // row is owned by the caller (users.id); there is no cross-user read. Mounted under /me so it
-// rides the gateway's existing /api/me/ route to this service — no gateway change.
+// rides the gateway to this service via its own /api/me/addresses block (the bare /api/me/ prefix goes to auth).
 // -----------------------------------------------------------
 
 const COLS =
