@@ -12,11 +12,11 @@ export const verifyDl: Verifier = async (request, ctx) => {
 
   const outcome = await ctx.provider.verifyDl({ dl_number: dl, dob })
   if (outcome.unavailable) return { result: manualReview(outcome.reason ?? 'no KYC provider configured') }
-  if (!outcome.verified) return { result: failed(outcome.reason ?? 'Driving licence could not be verified') }
+  if (!outcome.verified) return { result: failed(outcome.reason ?? 'Driving licence could not be verified'), details: outcome.details }
 
   const name = String(request.metadata.name ?? '').trim()
   if (name && outcome.name && !fuzzyNameMatch(name, outcome.name)) {
     return { result: failed('The name does not match the driving-licence record') }
   }
-  return { result: success(outcome.reference_id ?? '') }
+  return { result: success(outcome.reference_id ?? ''), details: outcome.details }
 }

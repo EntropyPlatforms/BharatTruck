@@ -5,7 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import fp from 'fastify-plugin'
 import { authenticate } from '../lib/authenticate.js'
 import { getCurrentLevel, getKYCRecord, upsertVerification } from '../modules/kyc/repository.js'
-import { getKycProvider } from '../modules/kyc/provider.js'
+import { checkRouting, getKycProvider } from '../modules/kyc/provider.js'
 import { KYCStatus, UserRole, type KYCRequest } from '../modules/kyc/types.js'
 import type { Verifier } from '../modules/kyc/verify.js'
 
@@ -96,12 +96,12 @@ async function handleVerify(
   }
 
   try {
-    const { result, keys } = await verifier(body, { supabase: this.supabase, provider: getKycProvider() })
+    const { result, keys, details } = await verifier(body, { supabase: this.supabase, provider: getKycProvider() })
     const kyc_level = await upsertVerification(this.supabase, body.user_id, body.role, type, result, keys)
     if (result.status === KYCStatus.Success) await applyVerifiedEffects(this.supabase, type, body)
     reply.code(statusCodeFor(result.status)).send({
       success: result.status !== KYCStatus.Failed,
-      data: { type, result, kyc_level },
+      data: { type, result, kyc_level, ...(details ? { details } : {}) },
     })
   } catch (err) {
     request.log.error(err, `KYC verify (${type}) failed`)
@@ -127,8 +127,18 @@ async function applyVerifiedEffects(supabase: FastifyInstance['supabase'], type:
     return
   }
   if (type === 'rc') {
+    // Only the caller's OWN trucks (as fleet owner or as the solo driver): verifying a number must
+    // never flip a truck with the same RC that belongs to someone else.
     const rc = String(body.metadata.rc_number ?? '').trim().toUpperCase().replace(/[\s-]/g, '')
-    if (rc) await supabase.from('vehicles').update({ rc_status: 'verified', updated_at: nowIso }).ilike('rc_number', rc)
+    if (!rc) return
+    const [{ data: fo }, { data: dr }] = await Promise.all([
+      supabase.from('fleet_owners').select('id').eq('user_id', userId).maybeSingle(),
+      supabase.from('drivers').select('id').eq('user_id', userId).maybeSingle(),
+    ])
+    const foId = (fo as { id?: string } | null)?.id
+    const drId = (dr as { id?: string } | null)?.id
+    if (foId) await supabase.from('vehicles').update({ rc_status: 'verified', updated_at: nowIso }).ilike('rc_number', rc).eq('fleet_owner_id', foId)
+    if (drId) await supabase.from('vehicles').update({ rc_status: 'verified', updated_at: nowIso }).ilike('rc_number', rc).eq('driver_id', drId)
     return
   }
   if (type === 'bank') {
@@ -198,8 +208,15 @@ export const kycRoutes = fp(async (app: FastifyInstance) => {
   // GET /kyc/config — what the app may offer: which provider answers verifications, and whether
   // the public GST lookups and DigiLocker (both need the Sandbox keys) are available.
   app.get('/kyc/config', { preHandler: authenticate }, async (_req, reply) => {
-    const provider = getKycProvider().name
-    return reply.send({ success: true, data: { provider, gst_lookup: sandbox.configured, digilocker: sandbox.configured, gst_otp: sandbox.configured } })
+    const p = getKycProvider()
+    const routing = checkRouting(p)
+    // Which vendor answers the licence (Sarathi) and RC (Vahan) lookups. Sandbox has no RC route,
+    // so rc_check is true only when the RC check goes to Surepass.
+    return reply.send({ success: true, data: {
+      provider: p.name, gst_lookup: sandbox.configured, digilocker: sandbox.configured, gst_otp: sandbox.configured,
+      dl_provider: routing.dl, rc_provider: routing.rc,
+      dl_check: routing.dl === 'surepass', rc_check: routing.rc === 'surepass',
+    } })
   })
 
   // GST identity by OTP (2026-10-17): prove a GSTIN is the caller's OWN with the GST portal's

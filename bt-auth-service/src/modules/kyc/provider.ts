@@ -134,6 +134,91 @@ function isVerified(res: SurepassResponse<Record<string, unknown>>): boolean {
   return true
 }
 
+const str = (d: Record<string, unknown>, keys: string[]): string | null => {
+  for (const k of keys) {
+    const v = d[k]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    if (typeof v === 'number') return String(v)
+  }
+  return null
+}
+
+/** Parse YYYY-MM-DD, DD-MM-YYYY or DD/MM/YYYY into a UTC date; null when unreadable. */
+export function parseRecordDate(v: string | null): Date | null {
+  if (!v) return null
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+  m = v.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/)
+  if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]))
+  return null
+}
+
+const lapsed = (v: string | null, today: Date): boolean | null => {
+  const t = parseRecordDate(v)
+  return t ? t.getTime() < today.getTime() : null
+}
+
+const BAD_RC_STATUS = /(inactive|suspend|cancel|blacklist|revok|surrender|scrap|not\s*found)/i
+
+/** Pure: a Surepass RC (Vahan) response → outcome. Exported for the unit test. */
+export function surepassRcOutcome(res: SurepassResponse<Record<string, unknown>>, today = new Date()): VerificationOutcome {
+  const d = res.data ?? {}
+  const rcStatus = str(d, ['rc_status', 'status'])
+  const blacklisted = d.blacklist_status != null && /^(y|yes|true|blacklisted)$/i.test(String(d.blacklist_status).trim())
+  const fitUpto = str(d, ['fit_up_to', 'fit_upto', 'fitness_upto', 'fitness_up_to'])
+  const insUpto = str(d, ['insurance_upto', 'insurance_up_to'])
+  const bad = blacklisted || (rcStatus != null && BAD_RC_STATUS.test(rcStatus))
+  return base({
+    verified: res.success && !bad,
+    name: str(d, ['owner_name']),
+    reference_id: typeof d.client_id === 'string' ? d.client_id : null,
+    // Vehicle facts only: no owner name, address, chassis or engine number.
+    details: {
+      rc_status: rcStatus,
+      maker_model: str(d, ['maker_model', 'maker_description']),
+      vehicle_category: str(d, ['vehicle_category_description', 'vehicle_category', 'vehicle_class']),
+      fuel_type: str(d, ['fuel_type']),
+      norms: str(d, ['norms_type', 'norms']),
+      registration_date: str(d, ['registration_date']),
+      registered_at: str(d, ['registered_at']),
+      fitness_upto: fitUpto,
+      fitness_lapsed: lapsed(fitUpto, today),
+      insurance_upto: insUpto,
+      insurance_lapsed: lapsed(insUpto, today),
+      permit_valid_upto: str(d, ['permit_valid_upto']),
+      financed: typeof d.financed === 'boolean' ? d.financed : null,
+    },
+    raw: res,
+    reason: !res.success ? (res.message || 'RC not found on Vahan')
+      : blacklisted ? 'The RC is blacklisted on Vahan'
+      : bad ? `The RC is ${rcStatus} on Vahan` : null,
+  })
+}
+
+/** Pure: a Surepass driving-licence (Sarathi) response → outcome. Exported for the unit test. */
+export function surepassDlOutcome(res: SurepassResponse<Record<string, unknown>>, today = new Date()): VerificationOutcome {
+  const d = res.data ?? {}
+  const doe = str(d, ['doe', 'date_of_expiry', 'expiry_date'])
+  const transportDoe = str(d, ['transport_doe'])
+  const expired = lapsed(doe, today) === true
+  const transportLapsed = lapsed(transportDoe, today)
+  const classes = Array.isArray(d.vehicle_classes) ? (d.vehicle_classes as unknown[]).filter((x): x is string => typeof x === 'string') : []
+  return base({
+    verified: res.success && !expired,
+    name: str(d, ['name', 'full_name']),
+    reference_id: typeof d.client_id === 'string' ? d.client_id : null,
+    details: {
+      expiry: doe,
+      transport_expiry: transportDoe,
+      transport_valid: transportLapsed === null ? null : !transportLapsed,
+      vehicle_classes: classes,
+      state: str(d, ['state']),
+    },
+    raw: res,
+    reason: !res.success ? (res.message || 'Licence not found on Sarathi') : expired ? `The licence expired on ${doe}` : null,
+  })
+}
+
 /**
  * Surepass-backed provider. Each method is one authenticated POST to the documented endpoint,
  * mapped into a VerificationOutcome. The raw response is returned for audit; callers redact the
@@ -156,8 +241,21 @@ export class SurepassKycProvider implements KycProvider {
 
   verifyPan(input: PanInput) { return this.call('/pan/pan', { id_number: input.pan }) }
   verifyGstin(input: GstinInput) { return this.call('/corporate/gstin', { id_number: input.gstin }) }
-  verifyDl(input: DlInput) { return this.call('/driving-license/driving-license', { id_number: input.dl_number, dob: input.dob }) }
-  verifyRc(input: RcInput) { return this.call('/rc/rc', { id_number: input.rc_number }) }
+  // Driving licence: Surepass reads the transport department's Sarathi record, which needs the
+  // date of birth. A licence past its expiry is not a pass.
+  async verifyDl(input: DlInput) {
+    if (!input.dob) return base({ unavailable: true, reason: 'Licence verification needs the date of birth on the licence' })
+    const res = await this.client.post<Record<string, unknown>>('/driving-license/driving-license', { id_number: input.dl_number, dob: input.dob })
+    return surepassDlOutcome(res)
+  }
+  // Vehicle RC: Surepass reads the Vahan record. An RC that Vahan marks inactive, suspended,
+  // cancelled or blacklisted is not a pass. The endpoint is overridable (SUREPASS_RC_ENDPOINT)
+  // because Surepass sells RC in several tiers and an account may have only one of them.
+  async verifyRc(input: RcInput) {
+    const endpoint = (process.env.SUREPASS_RC_ENDPOINT ?? '').trim() || '/rc/rc-full'
+    const res = await this.client.post<Record<string, unknown>>(endpoint, { id_number: input.rc_number })
+    return surepassRcOutcome(res)
+  }
   verifyBank(input: BankInput) { return this.call('/bank-verification/bank-verification', { id_number: input.account_number, ifsc: input.ifsc }) }
   verifyFaceMatch(input: FaceMatchInput) { return this.call('/face/face-match', { image_1: input.image1, image_2: input.image2 }) }
   aadhaarGenerateOtp(input: AadhaarOtpInput) { return this.call('/aadhaar-v2/generate-otp', { id_number: input.aadhaar }) }
@@ -298,16 +396,67 @@ export class SandboxKycProvider implements KycProvider {
   }
 }
 
+// ── per-check routing ─────────────────────────────────────────────────────────
+
+/**
+ * Sends the licence and/or RC checks to a different vendor from the rest (2026-11-12). Sandbox
+ * has no Vahan (RC) lookup, so RC can go to Surepass while PAN, GST, bank and Aadhaar stay on
+ * Sandbox. Every other check is delegated to the base provider unchanged.
+ */
+export class RoutedKycProvider implements KycProvider {
+  constructor(private readonly baseProvider: KycProvider, private readonly overrides: { dl?: KycProvider; rc?: KycProvider }) {}
+  get name() { return this.baseProvider.name }
+  /** Which vendor answers each overridable check. */
+  get routing(): { dl: KycProvider['name']; rc: KycProvider['name'] } {
+    return { dl: (this.overrides.dl ?? this.baseProvider).name, rc: (this.overrides.rc ?? this.baseProvider).name }
+  }
+  verifyPan(i: PanInput) { return this.baseProvider.verifyPan(i) }
+  verifyGstin(i: GstinInput) { return this.baseProvider.verifyGstin(i) }
+  verifyDl(i: DlInput) { return (this.overrides.dl ?? this.baseProvider).verifyDl(i) }
+  verifyRc(i: RcInput) { return (this.overrides.rc ?? this.baseProvider).verifyRc(i) }
+  verifyBank(i: BankInput) { return this.baseProvider.verifyBank(i) }
+  verifyFaceMatch(i: FaceMatchInput) { return this.baseProvider.verifyFaceMatch(i) }
+  aadhaarGenerateOtp(i: AadhaarOtpInput) { return this.baseProvider.aadhaarGenerateOtp(i) }
+  aadhaarSubmitOtp(i: AadhaarSubmitInput) { return this.baseProvider.aadhaarSubmitOtp(i) }
+}
+
+/** Which vendor answers the licence and RC checks, for a routed or a plain provider. */
+export function checkRouting(p: KycProvider): { dl: KycProvider['name']; rc: KycProvider['name'] } {
+  return p instanceof RoutedKycProvider ? p.routing : { dl: p.name, rc: p.name }
+}
+
 // ── resolution ────────────────────────────────────────────────────────────────
 
 export type KycProviderResolution = {
   provider: KycProvider
   /** Non-null whenever verifications are NOT hitting a real aggregator, with the reason. */
   unwiredReason: string | null
+  /** A KYC_DL_PROVIDER / KYC_RC_PROVIDER override that was ignored (missing credentials), with why. */
+  overrideWarnings?: string[]
 }
 
-/** Pure: env bag in, provider out. No logging, no memoisation — so a test can pin configurations. */
+/**
+ * Pure: env bag in, provider out. No logging, no memoisation — so a test can pin configurations.
+ * KYC_PROVIDER picks the vendor for every check; KYC_DL_PROVIDER and KYC_RC_PROVIDER optionally
+ * send the licence (Sarathi) and RC (Vahan) checks to another vendor. An override whose
+ * credentials are missing is ignored with a reason, never half-applied.
+ */
 export function resolveKycProvider(env: NodeJS.ProcessEnv = process.env): KycProviderResolution {
+  const main = resolveBase(env)
+  const warnings: string[] = []
+  const overrides: { dl?: KycProvider; rc?: KycProvider } = {}
+  for (const [check, varName] of [['dl', 'KYC_DL_PROVIDER'], ['rc', 'KYC_RC_PROVIDER']] as const) {
+    const sel = (env[varName] ?? '').trim().toLowerCase()
+    if (!sel) continue
+    const r = resolveBase({ ...env, KYC_PROVIDER: sel })
+    if (r.unwiredReason) { warnings.push(r.unwiredReason.replace(/KYC_PROVIDER/g, varName)); continue }
+    if (r.provider.name !== main.provider.name) overrides[check] = r.provider
+  }
+  const provider = overrides.dl || overrides.rc ? new RoutedKycProvider(main.provider, overrides) : main.provider
+  return { provider, unwiredReason: main.unwiredReason, overrideWarnings: warnings }
+}
+
+function resolveBase(env: NodeJS.ProcessEnv): KycProviderResolution {
   const selected = (env.KYC_PROVIDER ?? '').trim().toLowerCase()
 
   if (!selected || selected === 'console') {
@@ -336,11 +485,13 @@ let cached: KycProvider | null = null
 /** Process-wide provider, resolved and announced once. index.ts calls this at bootstrap. */
 export function getKycProvider(): KycProvider {
   if (!cached) {
-    const { provider, unwiredReason } = resolveKycProvider()
+    const { provider, unwiredReason, overrideWarnings } = resolveKycProvider()
+    for (const w of overrideWarnings ?? []) console.warn(`[kyc] ${w} — that override is ignored`)
     if (unwiredReason) {
       console.warn(`[kyc] ${unwiredReason} — verifications are recorded as manual_review, not automatically verified. Set KYC_PROVIDER + the vendor key to enable.`)
     } else {
-      console.log(`[kyc] provider=${provider.name} — identity documents are verified against the vendor`)
+      const r = checkRouting(provider)
+      console.log(`[kyc] provider=${provider.name} licence=${r.dl} rc=${r.rc} — identity documents are verified against the vendor`)
     }
     cached = provider
   }

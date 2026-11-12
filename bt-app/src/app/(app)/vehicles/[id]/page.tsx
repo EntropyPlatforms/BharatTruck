@@ -13,13 +13,14 @@ import {
   PieChart, Plus, Weight, Route, ShieldCheck, Trash2, TrendingUp, Wallet, Wrench, X,
 } from 'lucide-react'
 import {
-  ApiError, getOneVehicleAnalytics, getVehicle,
+  ApiError, getKycConfig, getOneVehicleAnalytics, getVehicle,
   setVehicleFinance, setVehicleLanes, setVehiclePermits,
 } from '@/lib/api'
 import type { CostBreakdown, Vehicle, VehicleFinance, VehicleLane, VehiclePermit } from '@/lib/types'
 import { inr, inrCompact, km, pct, periodDays, shortDate, tons, vehicleAge, inrSigned } from '@/lib/format'
 import { Card, CardHead, CoverPill, Empty, ErrorNote, IconTile, InfoDot, Loading } from '@/components/stat'
 import { TruckTile, meterColour } from '@/components/fleet-core/bits'
+import { VahanRcCard } from '@/components/govt-record-check'
 import {
   BTN_BLUE, BTN_PRIMARY as UI_BTN_PRIMARY, BTN_SECONDARY as UI_BTN_SECONDARY, INPUT,
   LABEL as UI_LABEL, MONO, SEG_OFF, SEG_ON, SEG_WRAP, SELECT, TAB_OFF, TAB_ON, cx, pill,
@@ -789,6 +790,13 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [editing, setEditing] = useState<'finance' | 'permits' | 'lanes' | null>(null)
+  // Whether the RC check runs against Vahan automatically (an RC vendor is wired).
+  const [rcCheck, setRcCheck] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    getKycConfig().then(c => { if (!cancelled) setRcCheck(!!c.rc_check) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   // The effect only kicks the requests off; every setState happens in a callback.
   // Flipping `loading`/`error` synchronously here would trip
@@ -925,6 +933,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
             </div>
           ) : (
             <div id="panel-finance" role="tabpanel" aria-labelledby="tab-finance" className="space-y-5">
+              <VahanRcCard rcNumber={vehicle.rc_number} rcStatus={vehicle.rc_status} enabled={rcCheck} onVerified={reload} />
               <FinanceCard
                 finance={detail.finance}
                 onEdit={() => setEditing('finance')}

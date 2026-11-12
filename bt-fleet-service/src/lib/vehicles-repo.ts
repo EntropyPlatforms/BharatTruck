@@ -23,7 +23,8 @@ const VEHICLE_COLUMNS =
   'id, driver_id, fleet_owner_id, rc_number, capacity_tons, body_type, axle_config, maker_model, ' +
   'fuel_type, rc_expiry, model_category, emission_norm, manufacture_year, volume_cuft, ' +
   // is_active: VehicleRow declared it but it was never selected, so every truck read as active.
-  'current_odometer_km, is_active, created_at'
+  // rc_status: pending until the owner checks the RC on Vahan (or ops verifies it).
+  'current_odometer_km, is_active, rc_status, created_at'
 
 export type CreateVehicleInput = {
   rc_number: string

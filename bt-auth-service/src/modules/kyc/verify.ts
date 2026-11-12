@@ -11,7 +11,13 @@ import { KYCLevel, KYCStatus, type KYCRequest, type KYCResult } from './types.js
 export type VerifierContext = { supabase: SupabaseClient; provider: KycProvider }
 
 /** A verifier returns the result to store/return, plus any dedup keys it produced (aadhaar/pan). */
-export type VerifierOutput = { result: KYCResult; keys?: VerificationKeys }
+export type VerifierOutput = {
+  result: KYCResult
+  keys?: VerificationKeys
+  /** Non-identifying facts from the record (e.g. RC fitness / insurance dates), returned to the
+   *  caller only, never persisted. */
+  details?: Record<string, unknown>
+}
 
 export type Verifier = (request: KYCRequest, ctx: VerifierContext) => Promise<VerifierOutput>
 
