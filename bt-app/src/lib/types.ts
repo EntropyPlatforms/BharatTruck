@@ -681,6 +681,40 @@ export type QuoteCarrier = {
   total_trips: number | null
 }
 
+// ── Preferred carriers (bt-booking-service /me/carriers, migration 0044) ──────────
+
+/** Matches the server's carrier_kind. NOTE a quote's carrier says 'fleet' for the same party. */
+export type CarrierKind = 'driver' | 'fleet_owner'
+
+/**
+ * A carrier as the shipper's picker sees it (mirrors bt-booking-service CarrierCard).
+ * "Preferred" = finished trips with this shipper and/or starred by them; `reasons` says
+ * which. Never carries a full phone number — `phone_masked` is the last four digits.
+ */
+export type CarrierCard = {
+  kind: CarrierKind
+  /** drivers.id or fleet_owners.id. */
+  id: string
+  name: string | null
+  phone_masked: string | null
+  city: string | null
+  truck_number: string | null
+  /** Finished (completed / paid) trips for THIS shipper. */
+  trips_with_you: number
+  last_trip_at: string | null
+  starred: boolean
+  preferred: boolean
+  reasons: Array<'trips' | 'starred'>
+  /** Can a direct load be aimed at them (solo / owner-driver)? Fleets and employed drivers: no. */
+  direct_targetable: boolean
+}
+
+export type PreferredCarriers = {
+  carriers: CarrierCard[]
+  /** False until migration 0044 is applied — hide the star toggle, the list still works. */
+  stars_enabled: boolean
+}
+
 /** The load behind a bid or an open auction. */
 export type AuctionBooking = {
   id: string
@@ -829,6 +863,11 @@ export type Booking = {
   completed_at: string | null
   created_at: string
   updated_at: string
+  /**
+   * The assigned driver's profile, joined server-side (repository getBookingById). Only
+   * present once a driver is on the trip; the load page reads the name from it.
+   */
+  driver?: { id: string; truck_number: string | null; user?: { full_name: string | null } | null } | null
   /** The receiving party (server-attached; absent for a viewer with no relation). */
   consignee?: ConsigneeParty | null
   /** The caller's relations to this booking + whether they may see money. */

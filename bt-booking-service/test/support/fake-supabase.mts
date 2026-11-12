@@ -11,7 +11,28 @@
  */
 export type Row = Record<string, any>
 
-const UNIQUE: Record<string, string> = { alerts: 'dedupe_key', notification_outbox: 'dedupe_key' }
+const UNIQUE: Record<string, string[]> = {
+  alerts: ['dedupe_key'],
+  notification_outbox: ['dedupe_key'],
+  shipper_preferred_carriers: ['shipper_id', 'carrier_kind', 'carrier_id'],
+}
+
+function escapeRe(c: string): string {
+  return c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** SQL ILIKE → RegExp: % and _ are wildcards unless backslash-escaped. */
+function ilikeToRegExp(pattern: string): RegExp {
+  let re = ''
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === '\\' && i + 1 < pattern.length) { re += escapeRe(pattern[++i]); continue }
+    if (c === '%') re += '.*'
+    else if (c === '_') re += '.'
+    else re += escapeRe(c)
+  }
+  return new RegExp(`^${re}$`, 'i')
+}
 
 export function createFakeSupabase() {
   const store: Record<string, Row[]> = {}
@@ -21,7 +42,7 @@ export function createFakeSupabase() {
 
   class Query {
     private filters: Array<(r: Row) => boolean> = []
-    private mode: 'select' | 'insert' | 'update' = 'select'
+    private mode: 'select' | 'insert' | 'update' | 'delete' = 'select'
     private payload: any = null
     private headOnly = false
     private orderBy: { col: string; asc: boolean } | null = null
@@ -31,6 +52,8 @@ export function createFakeSupabase() {
     select(_cols?: string, opts?: { count?: string; head?: boolean }) { if (opts?.head) this.headOnly = true; return this }
     insert(p: Row | Row[]) { this.mode = 'insert'; this.payload = p; return this }
     update(p: Row) { this.mode = 'update'; this.payload = p; return this }
+    delete(_opts?: { count?: string }) { this.mode = 'delete'; return this }
+    ilike(c: string, pattern: string) { const re = ilikeToRegExp(pattern); this.filters.push((r) => typeof r[c] === 'string' && re.test(r[c])); return this }
     eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
     neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
     in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
@@ -64,10 +87,10 @@ export function createFakeSupabase() {
 
       if (this.mode === 'insert') {
         const items: Row[] = Array.isArray(this.payload) ? this.payload : [this.payload]
-        const key = UNIQUE[this.table]
+        const keys = UNIQUE[this.table]
         for (const it of items) {
-          if (key && rows.some((r) => r[key] === it[key])) {
-            return { data: null, count: 0, error: { code: '23505', message: `duplicate key value violates unique constraint (${key})` } }
+          if (keys && rows.some((r) => keys.every((k) => r[k] === it[k]))) {
+            return { data: null, count: 0, error: { code: '23505', message: `duplicate key value violates unique constraint (${keys.join(', ')})` } }
           }
         }
         const inserted = items.map((it) => ({ id: it.id ?? `${this.table}-${++seq}`, ...it }))
@@ -76,6 +99,10 @@ export function createFakeSupabase() {
       }
 
       let hit = rows.filter((r) => this.filters.every((f) => f(r)))
+      if (this.mode === 'delete') {
+        store[this.table] = rows.filter((r) => !hit.includes(r))
+        return { data: null, count: hit.length, error: null }
+      }
       if (this.mode === 'update') {
         hit.forEach((r) => Object.assign(r, this.payload))
         return { data: hit, count: hit.length, error: null }

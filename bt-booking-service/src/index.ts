@@ -8,6 +8,7 @@ import { quoteRoutes } from './routes/quotes.js'
 import { feedRoutes } from './routes/feed.js'
 import { summaryRoutes } from './routes/summary.js'
 import { savedAddressRoutes } from './routes/saved-addresses.js'
+import { preferredCarrierRoutes } from './routes/preferred-carriers.js'
 import { locationRoutes } from './routes/location.js'
 import { internalRoutes } from './routes/internal.js'
 import { opsRoutes } from './routes/ops.js'
@@ -59,6 +60,8 @@ async function bootstrap() {
     await authedApp.register(summaryRoutes, { prefix: '/me' })
     // The saved-address book (D-020) is also a per-caller surface, same /me prefix.
     await authedApp.register(savedAddressRoutes, { prefix: '/me' })
+    // A shipper's Preferred carriers (finished trips + starred, migration 0044), /me/carriers.
+    await authedApp.register(preferredCarrierRoutes, { prefix: '/me' })
   })
 
   // Internal service-to-service routes (shared-secret gated, not public)
