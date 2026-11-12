@@ -10,7 +10,8 @@
  *   - Continue with Google (shown only when a Google client id is configured)
  *
  * `?mode=register` / `?mode=forgot` open the page on that screen (the landing page's
- * "Create account" links here). Any other value, or none, opens sign-in.
+ * "Create account" links here). Any other value, or none, opens sign-in. `?as=driver` pre-picks
+ * the persona and `?next=/join` returns the user to that page after signing in (driver invite links).
  */
 
 import { Suspense, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
@@ -62,6 +63,19 @@ function initialMode(q: string | null): Mode {
   return q === 'register' || q === 'forgot' ? q : 'signin'
 }
 
+// `?as=driver` pre-picks the persona on Create account (the driver invite link sends people
+// here that way). Anything else keeps the default.
+function initialPersona(q: string | null): PrimaryPersona {
+  return q === 'driver' || q === 'fleet_owner' || q === 'shipper' ? q : 'shipper'
+}
+
+// `?next=/path` returns the user there after signing in (e.g. back to /join). Only a path on
+// THIS site is honoured — never `//evil.com` or a full URL — so the param cannot become an
+// open redirect.
+function safeNext(q: string | null): string {
+  return q && q.startsWith('/') && !q.startsWith('//') && !q.startsWith('/\\') ? q : '/home'
+}
+
 function LoginScreen() {
   const router = useRouter()
   const params = useSearchParams()
@@ -70,7 +84,7 @@ function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
-  const [persona, setPersona] = useState<PrimaryPersona>('shipper')
+  const [persona, setPersona] = useState<PrimaryPersona>(() => initialPersona(params.get('as')))
   const [otp, setOtp] = useState('')
   const [otpFocused, setOtpFocused] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,8 +93,8 @@ function LoginScreen() {
 
   const finishLogin = useCallback((d: { access_token: string; refresh_token: string; user?: AuthUser }) => {
     login(d.access_token, d.refresh_token, d.user)
-    router.replace('/home')
-  }, [login, router])
+    router.replace(safeNext(params.get('next')))
+  }, [login, router, params])
 
   function go(next: Mode) { setMode(next); setError(null); setNotice(null) }
 

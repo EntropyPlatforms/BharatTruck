@@ -281,14 +281,23 @@ export async function hydrateDriverIdentities(driverIds: string[]): Promise<Map<
   return out
 }
 
+// inviteDriver — THE affiliation insert. 'pending' (the default) is an invitation the driver
+// must still accept; 'active' is used ONLY by the invite-link join (routes/join.ts), where the
+// driver is the one acting — they opened the owner's link and pressed Join — so their consent is
+// this very request and the row is born accepted (responded_at = now).
 export async function inviteDriver(
   fleetOwnerId: string,
   driverId: string,
   invitedBy: string,
+  opts: { status?: 'pending' | 'active' } = {},
 ): Promise<FleetDriverRow> {
+  const status = opts.status ?? 'pending'
   const { data, error } = await getSupabase()
     .from('fleet_drivers')
-    .insert({ fleet_owner_id: fleetOwnerId, driver_id: driverId, invited_by: invitedBy, status: 'pending' })
+    .insert({
+      fleet_owner_id: fleetOwnerId, driver_id: driverId, invited_by: invitedBy, status,
+      ...(status === 'active' ? { responded_at: new Date().toISOString() } : {}),
+    })
     .select(AFFILIATION_COLUMNS)
     .single()
   if (error) {
@@ -335,6 +344,22 @@ export async function getFleetDriverById(
     .maybeSingle()
   if (error) throw new Error(`fleet_drivers select failed: ${error.message}`)
   return asRowOrNull<FleetDriverRow>(data)
+}
+
+// listAffiliationsOfDriver — every row of ONE driver in the given statuses, across fleets. Used
+// only by the invite-link join to decide, for the driver themself, why they cannot join; what it
+// reads about another fleet is never returned to anyone.
+export async function listAffiliationsOfDriver(
+  driverId: string,
+  statuses: FleetDriverStatus[],
+): Promise<FleetDriverRow[]> {
+  const { data, error } = await getSupabase()
+    .from('fleet_drivers')
+    .select(AFFILIATION_COLUMNS)
+    .eq('driver_id', driverId)
+    .in('status', statuses)
+  if (error) throw new Error(`fleet_drivers select failed: ${error.message}`)
+  return asRows<FleetDriverRow>(data)
 }
 
 // getActiveAffiliation — the assignment guard: is this driver actually employed by

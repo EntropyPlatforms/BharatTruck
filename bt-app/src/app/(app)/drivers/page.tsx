@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  AlertTriangle, ChartColumn, Clock, FileUp, Pencil, RotateCcw, Search, Star, UserRound, UserPlus,
+  AlertTriangle, ChartColumn, Clock, FileUp, Link2, Pencil, RotateCcw, Search, Star, UserRound, UserPlus,
   Users, Wallet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/app-shell'
 import { Card, CardHead, Empty, ErrorNote, InfoDot, Loading, Stat } from '@/components/stat'
 import { Avatar, COL_RULE, Modal, TD, TH, THEAD_ROW, TR, fmtPhone } from '@/components/fleet-ops/bits'
 import { BulkInviteDialog } from '@/components/fleet-ops/bulk-invite-dialog'
+import { InviteLinkDialog } from '@/components/fleet-ops/invite-link-dialog'
 import {
   ApiError, getDriverAnalytics, inviteDriver, listFleetDrivers, removeFleetDriver,
   updateFleetDriver,
@@ -91,6 +92,7 @@ export default function DriversPage() {
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
   const [salaryTarget, setSalaryTarget] = useState<RosterRow | null>(null)
   const [removeTarget, setRemoveTarget] = useState<RosterRow | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -183,6 +185,10 @@ export default function DriversPage() {
               <FileUp className="w-4 h-4" />
               Upload drivers (CSV)
             </button>
+            <button onClick={() => setLinkOpen(true)} className={BTN_SECONDARY}>
+              <Link2 className="w-4 h-4" />
+              Share invite link
+            </button>
             <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
               <UserPlus className="w-4 h-4" />
               Invite driver
@@ -204,13 +210,17 @@ export default function DriversPage() {
         <Card>
           <Empty
             art title="No drivers on the roster yet"
-            hint="Invite a driver by their BharatTruck phone number, or upload a list of drivers as a CSV."
+            hint="Invite a driver by their BharatTruck phone number, share an invite link, or upload a list of drivers as a CSV."
             icon={<Users />}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <button onClick={() => setInviteOpen(true)} className={BTN_PRIMARY}>
                   <UserPlus className="w-4 h-4" />
                   Invite driver
+                </button>
+                <button onClick={() => setLinkOpen(true)} className={BTN_SECONDARY}>
+                  <Link2 className="w-4 h-4" />
+                  Share invite link
                 </button>
                 <button onClick={() => setBulkOpen(true)} className={BTN_SECONDARY}>
                   <FileUp className="w-4 h-4" />
@@ -498,6 +508,11 @@ export default function DriversPage() {
           // invitations land in "Pending invitation" exactly as the service now holds them.
           onDone={() => { setBulkOpen(false); void load() }}
         />
+      )}
+
+      {linkOpen && (
+        // Drivers who join by link appear on the roster as active — re-read it on close.
+        <InviteLinkDialog onClose={() => { setLinkOpen(false); void load() }} />
       )}
 
       {salaryTarget && (

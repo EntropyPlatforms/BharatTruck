@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx test/economics.test.mts && tsx test/analytics-inputs.unit.mts && tsx test/fleet-access.unit.mts && tsx test/vehicle-schedule.test.mts && tsx test/assignment-seam.test.mts && tsx test/assignment-sweep.test.mts && tsx test/driver-lookup.unit.mts && tsx test/recrew-plan.unit.mts && tsx test/capacity-gate.unit.mts && tsx test/owner-identifiers.unit.mts && tsx test/ocr-table.unit.mts && tsx test/running-cost-score.unit.mts && tsx test/analytics-kpis.unit.mts && tsx test/vehicle-gate.unit.mts && tsx test/solo-carrier-board.test.mts && tsx test/bulk-invite.test.mts"
+    "test": "tsx test/economics.test.mts && tsx test/analytics-inputs.unit.mts && tsx test/fleet-access.unit.mts && tsx test/vehicle-schedule.test.mts && tsx test/assignment-seam.test.mts && tsx test/assignment-sweep.test.mts && tsx test/driver-lookup.unit.mts && tsx test/recrew-plan.unit.mts && tsx test/capacity-gate.unit.mts && tsx test/owner-identifiers.unit.mts && tsx test/ocr-table.unit.mts && tsx test/running-cost-score.unit.mts && tsx test/analytics-kpis.unit.mts && tsx test/vehicle-gate.unit.mts && tsx test/solo-carrier-board.test.mts && tsx test/bulk-invite.test.mts && tsx test/invite-link.test.mts"
   },
   "dependencies": {
     "@bharattruck/shared": "file:../packages/shared",
