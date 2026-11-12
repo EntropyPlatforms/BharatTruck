@@ -29,6 +29,7 @@ import { PageHeader } from '@/components/app-shell'
 import { Card, CardHead, ErrorNote, IconTile, Loading } from '@/components/stat'
 import ScanDocument from '@/components/scan-document'
 import { DigiLockerButton, DigiLockerReturn } from '@/components/digilocker-licence'
+import { SarathiCheck } from '@/components/govt-record-check'
 import {
   ApiError, becomeDriver, getDocumentScanConfig, getDriverOnboarding, getKycConfig, getOnboardingStatus, linkBankAccount, verifyKyc,
   submitDriverLicense, updateDriverLicense, updateDriverProfile,
@@ -209,7 +210,7 @@ export default function DriverProfilePage() {
           <SummaryList profile={profile} status={status} />
           <DetailsCard profile={profile} scan={scan} onSaved={silentReload} />
           <DigiLockerReturn onImported={silentReload} />
-          <LicenceCard license={profile.license} scan={scan} digilocker={!!kyc?.digilocker} onSaved={silentReload} />
+          <LicenceCard license={profile.license} scan={scan} digilocker={!!kyc?.digilocker} sarathi={!!kyc?.dl_check} onSaved={silentReload} />
           <BankCard accounts={profile.bank_accounts} scan={scan} holderName={profile.user.full_name} verify={!!kyc && kyc.provider !== 'console' ? { userId: user?.id ?? '' } : null} onSaved={silentReload} />
         </div>
         <div className="space-y-5">
@@ -589,7 +590,7 @@ function LanguageChips({ id, value, onChange }: { id: string; value: string; onC
 
 // ── Driving licence (POST / PUT /onboarding/license) ──────────
 
-function LicenceCard({ license, scan, digilocker, onSaved }: { license: DriverLicense | null; scan: boolean; digilocker: boolean; onSaved: () => Promise<void> }) {
+function LicenceCard({ license, scan, digilocker, sarathi, onSaved }: { license: DriverLicense | null; scan: boolean; digilocker: boolean; sarathi: boolean; onSaved: () => Promise<void> }) {
   const initial = {
     dl_number: license?.dl_number ?? '',
     expiry_date: license?.expiry_date ?? '',
@@ -663,7 +664,7 @@ function LicenceCard({ license, scan, digilocker, onSaved }: { license: DriverLi
       <div id="licence" className="scroll-mt-20" />
       <CardHead
         title="Driving licence"
-        sub="Proof you may legally drive the vehicle class. Verified by our ops team."
+        sub={sarathi ? 'Proof you may legally drive the vehicle class. Checked against the Sarathi licence register.' : 'Proof you may legally drive the vehicle class. Verified by our ops team.'}
         icon={<IdCard />}
         tint="amber"
       />
@@ -676,10 +677,13 @@ function LicenceCard({ license, scan, digilocker, onSaved }: { license: DriverLi
               {license.expiry_date && <span className="text-gray-500">expires {fullDate(license.expiry_date)}</span>}
             </p>
           )}
+          {sarathi && license && license.status !== 'verified' && !dirty && (
+            <SarathiCheck dlNumber={license.dl_number} onVerified={() => { void onSaved() }} />
+          )}
           {digilocker && license?.status !== 'verified' && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3.5 py-3">
               <DigiLockerButton enabled />
-              <p className="text-sm text-gray-700">Fastest: pull your licence from the transport department's record through DigiLocker. It is verified on the spot — nothing to type.</p>
+              <p className="text-sm text-gray-700">Fastest: pull your licence from the transport department&apos;s record through DigiLocker. It is verified on the spot — nothing to type.</p>
             </div>
           )}
           {scan && (

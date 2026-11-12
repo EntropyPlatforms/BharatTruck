@@ -136,6 +136,8 @@ export type VehicleRow = {
   current_odometer_km: number | null
   /** false = deactivated; it then carries no share of office overhead. */
   is_active?: boolean
+  /** pending | verified | rejected: set by the RC check (bt-auth-service /kyc/verify/rc). */
+  rc_status?: 'pending' | 'verified' | 'rejected'
   created_at: string
 }
 

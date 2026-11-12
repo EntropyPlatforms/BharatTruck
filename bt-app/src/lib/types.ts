@@ -217,6 +217,8 @@ export type Vehicle = {
   volume_cuft: number | null
   current_odometer_km: number | null
   is_active: boolean
+  /** pending until the RC is checked on Vahan (or by ops). */
+  rc_status?: 'pending' | 'verified' | 'rejected'
   created_at: string
   updated_at: string
 }
@@ -1680,7 +1682,18 @@ export type OnlineSync = PaymentStatus & { synced: boolean; status: string }
 // ── Government-record verification (bt-auth-service /kyc/*) ──
 
 /** What the deployment can verify: which provider answers, and whether GST lookups / DigiLocker are on. */
-export type KycConfig = { provider: 'console' | 'surepass' | 'sandbox'; gst_lookup: boolean; digilocker: boolean; gst_otp?: boolean }
+export type KycConfig = {
+  provider: 'console' | 'surepass' | 'sandbox'
+  gst_lookup: boolean
+  digilocker: boolean
+  gst_otp?: boolean
+  /** Which vendor answers the licence (Sarathi) and RC (Vahan) lookups. */
+  dl_provider?: 'console' | 'surepass' | 'sandbox'
+  rc_provider?: 'console' | 'surepass' | 'sandbox'
+  /** True when the check runs against the government record automatically. */
+  dl_check?: boolean
+  rc_check?: boolean
+}
 
 /** POST /kyc/gst/otp/verify — the GSTIN is the caller's own (OTP to its registered mobile), plus the registered names. */
 export type GstOtpVerified = {
@@ -1728,6 +1741,9 @@ export type KycVerifyResult = {
   type: string
   result: { status: 'success' | 'failed' | 'pending' | 'manual_review'; error?: string }
   kyc_level: 'L0' | 'L1' | 'L2' | 'L3'
+  /** Non-identifying facts from the record (RC: status, fitness/insurance dates; licence: expiry,
+   *  transport endorsement, classes). Returned once, never stored. */
+  details?: Record<string, unknown>
 }
 
 /** GET /kyc/status/:userId — level plus per-document status; never a number. */
