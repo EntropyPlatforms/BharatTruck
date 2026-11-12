@@ -23,6 +23,13 @@ import {
   inviteDriversInBulk,
   sendInvite,
 } from '../lib/bulk-invite.js'
+import {
+  INVITE_LINK_TTL_DAYS,
+  createInviteLink,
+  getCurrentInviteLink,
+  revokeInviteLink,
+  type InviteLinkView,
+} from '../lib/invite-link.js'
 
 // -----------------------------------------------------------
 // driverRoutes — the fleet roster (mounted at /fleet/drivers).
@@ -95,6 +102,33 @@ export async function driverRoutes(app: FastifyInstance) {
       success: true,
       data: { total: results.length, counts: countByStatus(results), results },
     })
+  })
+
+  // ── Invite LINK (owner side) ──────────────────────────────────
+  // One shareable link per fleet: a driver who opens it and presses Join is added as ACTIVE —
+  // the link IS the owner's approval (lib/invite-link.ts). Same gate as inviting one driver.
+  // The driver side is routes/join.ts. The app turns the token into <origin>/join#<token>.
+
+  // GET /fleet/drivers/invite-link — the fleet's current link, or null if there is none.
+  app.get('/invite-link', async (req, reply) => {
+    const owner = await requireFleetAccess(req.user, 'manage_drivers')
+    const link = await getCurrentInviteLink(owner.id)
+    return reply.send({ success: true, data: { link: link && linkOut(link), ttl_days: INVITE_LINK_TTL_DAYS } })
+  })
+
+  // POST /fleet/drivers/invite-link — make a new link (valid 7 days). Any earlier link of this
+  // fleet stops working at once, so this is also "the old link leaked — replace it".
+  app.post('/invite-link', async (req, reply) => {
+    const owner = await requireFleetAccess(req.user, 'manage_drivers')
+    const link = await createInviteLink(owner.id, req.user.userId)
+    return reply.status(201).send({ success: true, data: { link: linkOut(link), ttl_days: INVITE_LINK_TTL_DAYS } })
+  })
+
+  // DELETE /fleet/drivers/invite-link — turn link joining off until a new link is made.
+  app.delete('/invite-link', async (req, reply) => {
+    const owner = await requireFleetAccess(req.user, 'manage_drivers')
+    await revokeInviteLink(owner.id)
+    return reply.send({ success: true, data: { link: null, ttl_days: INVITE_LINK_TTL_DAYS } })
   })
 
   // GET /fleet/drivers — roster + status.
@@ -266,11 +300,16 @@ export async function driverRoutes(app: FastifyInstance) {
   })
 }
 
+// What the owner's app needs to show and share a link — not who made it.
+function linkOut(l: InviteLinkView) {
+  return { token: l.token, expires_at: l.expires_at }
+}
+
 // syncFleetSet — keep fleet:{id}:drivers in step with the table. Best-effort: the
 // Postgres write has already committed and is authoritative, and GET /fleet/live
 // rebuilds the set from the table when it finds it empty, so a Redis blip must not
 // turn into a failed roster change.
-async function syncFleetSet(
+export async function syncFleetSet(
   app: FastifyInstance,
   op: 'add' | 'remove',
   fleetOwnerId: string,

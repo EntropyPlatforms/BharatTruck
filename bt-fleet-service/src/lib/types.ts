@@ -24,6 +24,18 @@ export type ErrorCode =
   | 'NOT_IMPLEMENTED'
   | 'MISCONFIGURED'
   | 'INTERNAL_ERROR'
+  // A dependency (Redis, for invite links) is down: retry later, nothing was changed.
+  | 'SERVICE_UNAVAILABLE'
+  // Driver invite links (lib/invite-link.ts, routes/join.ts). Each its own code so the join
+  // page can say exactly what to do next rather than one generic refusal.
+  | 'LINK_INVALID'
+  | 'LINK_EXPIRED'
+  | 'LINK_REPLACED'
+  | 'DRIVER_PROFILE_REQUIRED'
+  | 'OWN_FLEET'
+  | 'ALREADY_IN_ANOTHER_FLEET'
+  | 'PENDING_INVITE_ELSEWHERE'
+  | 'SUSPENDED_IN_FLEET'
 
 export class FleetError extends Error {
   constructor(

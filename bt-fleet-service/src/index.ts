@@ -10,6 +10,7 @@ import { assignmentRoutes } from './routes/assignment.js'
 import { auctionRoutes } from './routes/auctions.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { internalFleetRoutes } from './routes/internal.js'
+import { joinRoutes } from './routes/join.js'
 import { FleetError } from './lib/types.js'
 
 const app = Fastify({
@@ -62,6 +63,11 @@ async function bootstrap() {
       await fleet.register(assignmentRoutes)
     }, { prefix: '/fleet' })
   })
+
+  // Driver invite links. Outside the JWT-gated block because the link PREVIEW is public (the
+  // join page shows which fleet a link is for before the driver signs in); joinRoutes puts its
+  // own JWT gate on /accept. Still under /fleet, so the gateway's /api/fleet/ rule reaches it.
+  await app.register(joinRoutes, { prefix: '/fleet/join' })
 
   // Internal service-to-service routes (shared-secret gated, not gateway-exposed).
   await app.register(async (internal) => {

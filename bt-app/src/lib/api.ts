@@ -408,6 +408,53 @@ export function removeFleetDriver(id: string) {
   return request<{ id: string }>(`/fleet/drivers/${id}`, { method: 'DELETE' })
 }
 
+// ── Invite LINK (bt-fleet-service: owner side /fleet/drivers/invite-link, driver side /fleet/join) ──
+//
+// One shareable link per fleet, valid 7 days. A driver who opens it and presses Join is added
+// as ACTIVE — the link itself is the owner's approval. The token rides in the URL FRAGMENT
+// (/join#<token>), which browsers never send to a server, and in request bodies, never paths,
+// so it cannot end up in a request log. "Make a new link" kills every older link at once.
+
+export type InviteLink = { token: string; expires_at: string }
+export type InviteLinkState = { link: InviteLink | null; ttl_days: number }
+
+/** The page a link opens. Built from THIS app's origin, so it follows whatever domain we're on. */
+export function inviteLinkUrl(token: string): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}/join#${token}`
+}
+
+/** The fleet's current link, or `link: null` if none is live. */
+export function getInviteLink() { return request<InviteLinkState>('/fleet/drivers/invite-link') }
+
+/** Make a new link (7 days). Any earlier link stops working immediately. */
+export function createInviteLink() {
+  return request<InviteLinkState>('/fleet/drivers/invite-link', { method: 'POST' })
+}
+
+/** Turn link-joining off: every outstanding link stops working. */
+export function revokeInviteLink() {
+  return request<InviteLinkState>('/fleet/drivers/invite-link', { method: 'DELETE' })
+}
+
+export type JoinFleetInfo = { company_name: string; city: string | null; state: string | null }
+export type JoinPreview = { fleet: JoinFleetInfo; expires_at: string }
+export type JoinResult = { joined: boolean; already_member: boolean; fleet: JoinFleetInfo; affiliation: FleetDriver }
+
+/** PUBLIC — which fleet a link is for. No sign-in, and no Authorization header is sent. */
+export async function previewJoinLink(token: string) {
+  return parse<JoinPreview>(await fetch(`${API_BASE}/api/fleet/join/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }))
+}
+
+/** Signed-in driver joins the link's fleet, as active. Opening it twice is harmless. */
+export function acceptJoinLink(token: string) {
+  return request<JoinResult>('/fleet/join/accept', { method: 'POST', body: JSON.stringify({ token }) })
+}
+
 // ── Driver-side fleet invitations (the consent seam — driver-only routes) ──────
 //
 // An owner invites by phone; ONLY the driver may accept, from their own app. These
