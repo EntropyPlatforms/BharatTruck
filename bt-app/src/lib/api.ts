@@ -29,6 +29,9 @@ import type {
   PaymentMode, PaymentStatus, SettleResult, PaymentConfig, OnlineOrder, CheckoutSuccess, OnlineSync,
   DocumentScan, ScanKind,
   TripExpense,
+  CarrierCard,
+  CarrierKind,
+  PreferredCarriers,
 } from './types'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
@@ -799,6 +802,29 @@ export function saveAddress(body: SaveAddressInput) {
 
 export function deleteSavedAddress(id: string) {
   return request<{ deleted: string }>(`/me/addresses/${id}`, { method: 'DELETE' })
+}
+
+// ── Preferred carriers (bt-booking-service /me/carriers, migration 0044) ───────
+//
+// Reached through the gateway's own /api/me/carriers block (the bare /api/me/ prefix
+// belongs to auth). Every call is scoped to the signed-in shipper on the server.
+
+/** The caller's Preferred carriers — finished trips + starred, ranked by the server. */
+export function listPreferredCarriers() {
+  return request<PreferredCarriers>('/me/carriers')
+}
+
+/** Drivers + fleets by name (2+ letters) or a whole 10-digit mobile. */
+export function searchCarriers(q: string) {
+  return request<CarrierCard[]>(`/me/carriers/search?q=${encodeURIComponent(q)}`)
+}
+
+export function starCarrier(kind: CarrierKind, id: string) {
+  return request<{ kind: CarrierKind; id: string; starred: true }>(`/me/carriers/${kind}/${id}/star`, { method: 'PUT' })
+}
+
+export function unstarCarrier(kind: CarrierKind, id: string) {
+  return request<{ kind: CarrierKind; id: string; starred: false }>(`/me/carriers/${kind}/${id}/star`, { method: 'DELETE' })
 }
 
 // ── Ship surfaces (Post a Load / My Loads / load detail — Phase 2) ─────────────

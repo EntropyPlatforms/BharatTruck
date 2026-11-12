@@ -55,6 +55,7 @@ import FreightDocuments from '@/components/freight-documents'
 import PaymentSection from '@/components/payment-section'
 import { NegotiationHistory } from '@/components/negotiation-history'
 import { CounterModal } from '@/components/counter-modal'
+import { PreferredBadge, usePreferredCarriers, type PreferredState } from '@/components/shipper/preferred-carriers'
 
 const TRACKED_STATUSES = ['accepted', 'in_transit', 'delivery_asserted', 'completed', 'paid']
 
@@ -85,6 +86,11 @@ export default function LoadDetailPage({ params }: { params: Promise<{ id: strin
   const [bidCount, setBidCount] = useState<number | null>(null)
 
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+
+  // The shipper's Preferred carriers, for the label on bids and on the booked carrier. Called
+  // up here (hooks cannot follow the early returns below) and only fetched for the shipper;
+  // a failure only costs the labels.
+  const preferred = usePreferredCarriers(booking?.viewer?.relations?.includes('shipper') ?? false)
 
   useEffect(() => {
     let cancelled = false
@@ -256,6 +262,7 @@ export default function LoadDetailPage({ params }: { params: Promise<{ id: strin
                   <Detail label="Pickup date" value={shortDate(booking.pickup_date)} />
                   {booking.pickup_time_slot && <Detail label="Time slot" value={booking.pickup_time_slot} />}
                   {booking.final_price != null && <Detail label="Final price" value={inr(booking.final_price)} strong />}
+                  {isShipper && <BookedCarrier booking={booking} preferred={preferred} />}
                 </dl>
               </div>
 
@@ -327,7 +334,7 @@ export default function LoadDetailPage({ params }: { params: Promise<{ id: strin
       {/* Bids — auction only */}
       {booking.booking_type === 'auction' && (
         <section id="panel-bids" role="tabpanel" aria-labelledby="tab-bids" hidden={active !== 'bids'}>
-          <QuotesPanel booking={booking} onBookingChanged={reload} onCount={setBidCount} />
+          <QuotesPanel booking={booking} onBookingChanged={reload} onCount={setBidCount} preferred={preferred} />
         </section>
       )}
 
@@ -582,8 +589,8 @@ function closesIn(deadline: string | null, now: number): string | null {
 }
 
 function QuotesPanel({
-  booking, onBookingChanged, onCount,
-}: { booking: Booking; onBookingChanged: () => void; onCount?: (n: number | null) => void }) {
+  booking, onBookingChanged, onCount, preferred,
+}: { booking: Booking; onBookingChanged: () => void; onCount?: (n: number | null) => void; preferred: PreferredState }) {
   const [quotes, setQuotes] = useState<Quote[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [counterQuoteId, setCounterQuoteId] = useState<string | null>(null)
@@ -714,6 +721,7 @@ function QuotesPanel({
                   key={quote.id}
                   rank={i + 1}
                   quote={quote}
+                  preferred={preferred}
                   estimate={estimate}
                   actionable={openForBids && (quote.status === 'submitted' || quote.status === 'countered')}
                   expanded={expandedQuote === quote.id}
@@ -852,10 +860,11 @@ const BTN_SM =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1'
 
 function QuoteRow({
-  rank, quote, estimate, actionable, expanded, onToggle, onAccept, onReject, onCounter,
+  rank, quote, preferred, estimate, actionable, expanded, onToggle, onAccept, onReject, onCounter,
 }: {
   rank: number
   quote: Quote
+  preferred: PreferredState
   estimate: number
   actionable: boolean
   expanded: boolean
@@ -866,6 +875,7 @@ function QuoteRow({
 }) {
   const qs = quoteStatusConfig[quote.status] ?? quoteStatusConfig.submitted
   const kind = carrierKind(quote)
+  const pref = kind ? preferred.lookup(kind, quote.carrier?.id ?? (kind === 'fleet' ? quote.fleet_owner_id : quote.driver_id)) : undefined
   const delta = quote.amount - estimate
   const live = quote.status === 'submitted' || quote.status === 'countered'
 
@@ -906,6 +916,7 @@ function QuoteRow({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {pref && <PreferredBadge card={pref} />}
             <CarrierName quote={quote} />
             <span className="inline-flex items-center whitespace-nowrap rounded-md bg-gray-100 px-1.5 py-0.5 text-[0.6875rem] font-medium text-gray-600">
               {carrierKindLabel(quote)}
@@ -957,6 +968,34 @@ function carrierKindLabel(quote: Quote): string {
 function carrierFallbackName(quote: Quote): string {
   const kind = carrierKind(quote)
   return kind === 'fleet' ? 'Fleet operator' : kind === 'driver' ? 'Independent driver' : 'Unknown carrier'
+}
+
+/**
+ * Who is carrying this load, with the Preferred label in front when they are one of the
+ * shipper's preferred carriers. A fleet win is labelled on the FLEET (it was hired), even
+ * after it pairs one of its drivers; a solo trip on the driver. The fleet's name comes from
+ * the preferred list when it is there — the booking payload carries no fleet profile.
+ */
+function BookedCarrier({ booking, preferred }: { booking: Booking; preferred: PreferredState }) {
+  const fleet = booking.fleet_owner_id ? preferred.lookup('fleet_owner', booking.fleet_owner_id) : undefined
+  const driver = !booking.fleet_owner_id && booking.driver_id ? preferred.lookup('driver', booking.driver_id) : undefined
+  if (!booking.fleet_owner_id && !booking.driver_id) return null
+  const pref = fleet ?? driver
+  const name = booking.fleet_owner_id
+    ? (fleet?.name ?? 'Fleet operator')
+    : (booking.driver?.user?.full_name ?? driver?.name ?? 'Independent driver')
+  return (
+    <div className="col-span-2">
+      <dt className="text-xs text-gray-500">Carrier</dt>
+      <dd className="mt-0.5 flex flex-wrap items-center gap-2 text-gray-900 font-medium">
+        {pref && <PreferredBadge card={pref} showReason />}
+        <span>{name}</span>
+        {booking.fleet_owner_id && booking.driver?.user?.full_name && (
+          <span className="text-xs text-gray-500">driver {booking.driver.user.full_name}</span>
+        )}
+      </dd>
+    </div>
+  )
 }
 
 function CarrierName({ quote }: { quote: Quote }) {

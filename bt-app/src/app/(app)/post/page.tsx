@@ -41,6 +41,7 @@ import {
 import { useAuth } from '@/lib/auth'
 import FleetPairPicker, { type FleetPair } from '@/components/fleet-pair-picker'
 import AddressPicker, { type PickedLocation } from '@/components/address-picker'
+import { CarrierPicker } from '@/components/shipper/preferred-carriers'
 import RouteMap from '@/components/maps/RouteMap'
 import { cityOf } from '@/components/driver/trip-bits'
 import { inr, todayInIndia } from '@/lib/format'
@@ -53,6 +54,7 @@ import {
 } from '@/lib/ui'
 import type {
   BookingType,
+  CarrierCard,
   ConsigneeInput,
   PriceQuote,
   PriceQuoteLoadType,
@@ -145,7 +147,9 @@ export default function PostLoadPage() {
   const [pickupDate, setPickupDate] = useState('')
   const [pickupTimeSlot, setPickupTimeSlot] = useState('')
   const [specialInstructions, setSpecialInstructions] = useState('')
-  const [targetDriverId, setTargetDriverId] = useState('')
+  // Direct load: the carrier picked from Preferred / search (replaces the raw driver-UUID box).
+  // A driver is aimed at via target_driver_id; a fleet is posted open — see CarrierPicker.
+  const [targetCarrier, setTargetCarrier] = useState<CarrierCard | null>(null)
   // Distributor direct-attach: the truck + driver from the poster's own fleet.
   const [fleetPair, setFleetPair] = useState<FleetPair>({ vehicleId: null, driverId: null })
   const [auctionDeadline, setAuctionDeadline] = useState('')
@@ -278,8 +282,8 @@ export default function PostLoadPage() {
           setFormError('Pick both a truck and a driver from your fleet.')
           return
         }
-      } else if (!targetDriverId.trim()) {
-        setFormError('A direct booking needs the target driver’s ID.')
+      } else if (!targetCarrier) {
+        setFormError('Choose a driver or fleet for this direct load — or switch to Auction.')
         return
       }
     }
@@ -319,7 +323,11 @@ export default function PostLoadPage() {
         booking_type: bookingType,
         dimensions_json: dimensionsJson(cargo),
         // A distributor attaches to their OWN fleet below (never a solo target driver).
-        target_driver_id: (!distributorDirect && bookingType === 'direct') ? targetDriverId.trim() || undefined : undefined,
+        // Only a driver who can accept it is ever a target (direct_targetable); a chosen
+        // fleet has no target column, so its load goes out open for it to quote on.
+        target_driver_id: (!distributorDirect && bookingType === 'direct' && targetCarrier?.kind === 'driver' && targetCarrier.direct_targetable)
+          ? targetCarrier.id
+          : undefined,
         auction_deadline:
           bookingType === 'auction' && auctionDeadline
             ? new Date(auctionDeadline).toISOString()
@@ -659,26 +667,23 @@ export default function PostLoadPage() {
                 active={bookingType === 'direct'}
                 onClick={() => changeBookingType('direct')}
                 title="Direct"
-                hint={isDistributor ? 'Carry it with your own fleet.' : 'Sent to one specific driver.'}
+                hint={isDistributor ? 'Carry it with your own fleet.' : 'Sent to a driver or fleet you choose — your preferred ones first.'}
               >
-                {isDistributor ? (
+                {isDistributor && (
                   <div>
                     <p className={LABEL}>Carry it with your fleet</p>
                     <FleetPairPicker value={fleetPair} onChange={(next) => { if (next.vehicleId !== fleetPair.vehicleId) invalidateQuote('the truck'); setFleetPair(next) }} loadWeightKg={parseFloat(weightKg) || null} />
                   </div>
-                ) : (
-                  <Field id="target_driver_id" label="Target driver ID">
-                    <input
-                      id="target_driver_id"
-                      value={targetDriverId}
-                      onChange={(e) => setTargetDriverId(e.target.value)}
-                      placeholder="UUID of the driver"
-                      className={cx(INPUT, 'font-mono')}
-                    />
-                  </Field>
                 )}
               </TypeCard>
             </div>
+            {/* The carrier picker gets the full width under both cards: it is a list with
+                names, labels and actions, which a half-width card would crush on a laptop. */}
+            {!isDistributor && bookingType === 'direct' && (
+              <div className="mt-3 rounded-xl border border-gray-200 p-4">
+                <CarrierPicker value={targetCarrier} onChange={setTargetCarrier} />
+              </div>
+            )}
           </Section>
         </div>
 
