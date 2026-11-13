@@ -81,6 +81,46 @@ export async function getFleetVehicle(fleetOwnerId: string, vehicleId: string): 
   return asRowOrNull<VehicleRow>(data)
 }
 
+// ── Market trucks (outsider crew) ──────────────────────────────────────────────
+// An OUTSIDER is an independent driver hired with their OWN truck for one load. These reads
+// are the only place this service looks at a driver-owned truck, and each is scoped on
+// driver_id: the truck must belong to exactly that driver (vehicles_single_owner guarantees a
+// driver-owned truck has fleet_owner_id NULL), so a fleet truck can never pass as a market one.
+
+export async function getDriverOwnedVehicle(driverId: string, vehicleId: string): Promise<VehicleRow | null> {
+  const { data, error } = await getSupabase()
+    .from('vehicles')
+    .select(VEHICLE_COLUMNS)
+    .eq('id', vehicleId)
+    .eq('driver_id', driverId)
+    .is('fleet_owner_id', null)
+    .maybeSingle()
+  if (error) throw new Error(`vehicles select failed: ${error.message}`)
+  return asRowOrNull<VehicleRow>(data)
+}
+
+export async function listDriverOwnedVehicles(driverId: string): Promise<VehicleRow[]> {
+  const { data, error } = await getSupabase()
+    .from('vehicles')
+    .select(VEHICLE_COLUMNS)
+    .eq('driver_id', driverId)
+    .is('fleet_owner_id', null)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`vehicles select failed: ${error.message}`)
+  return asRows<VehicleRow>(data).filter(v => v.is_active !== false)
+}
+
+// rcNumbersFor — the RC plate of trucks a fleet is RUNNING (its own or a hired market truck on
+// a live assignment of its own), for the live map's label. Callers pass only vehicle ids taken
+// from the fleet's own assignment rows.
+export async function rcNumbersFor(vehicleIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(vehicleIds)]
+  if (ids.length === 0) return new Map()
+  const { data, error } = await getSupabase().from('vehicles').select('id, rc_number').in('id', ids)
+  if (error) throw new Error(`vehicles select failed: ${error.message}`)
+  return new Map(asRows<{ id: string; rc_number: string }>(data).map(v => [v.id, v.rc_number]))
+}
+
 export async function requireFleetVehicle(fleetOwnerId: string, vehicleId: string): Promise<VehicleRow> {
   const vehicle = await getFleetVehicle(fleetOwnerId, vehicleId)
   if (!vehicle) throw new FleetError('Vehicle not found in this fleet', 'NOT_FOUND', 404)

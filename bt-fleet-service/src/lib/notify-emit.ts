@@ -34,6 +34,16 @@ export type FleetNotification =
       fleet_owner_id: string
       response: 'accepted' | 'declined'
     }
+  | {
+      event: 'market_load_offer'
+      booking_id: string
+      driver_id: string
+      fleet_owner_id: string
+      rc_number: string | null
+      source_address: string
+      destination_address: string
+      pickup_date: string
+    }
 
 export function emitNotification(payload: FleetNotification, log?: Logger): void {
   const base = process.env.BOOKING_SERVICE_URL
@@ -46,7 +56,7 @@ export function emitNotification(payload: FleetNotification, log?: Logger): void
     body: JSON.stringify(payload),
   }).catch((err) => {
     log?.warn(
-      { err, event: payload.event, invite_id: payload.invite_id },
+      { err, event: payload.event, ref: 'invite_id' in payload ? payload.invite_id : payload.booking_id },
       'fleet notification emit failed (fleet operation unaffected)',
     )
   })

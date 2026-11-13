@@ -18,6 +18,7 @@ import { PhotoHero } from '@/components/photo-hero'
 import { Card, Empty, ErrorNote, Loading } from '@/components/stat'
 import EmergenceCta from '@/components/emergence-cta'
 import FleetInvites from '@/components/fleet-invites'
+import MarketOffers from '@/components/market-offers'
 import { ApiError, getMyFeed } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { timeAgo } from '@/lib/format'
@@ -151,6 +152,8 @@ export default function HomePage() {
           {/* A pending fleet invitation is the one thing a driver must act on before anything
               else — the consent seam. Renders nothing unless they actually have one. */}
           <FleetInvites />
+          {/* A fleet wants to hire this driver's own truck for one load (market truck). */}
+          <MarketOffers />
 
           {/* Emergence CTA (D-32/33): the one growth-loop nudge the user's assets imply — e.g.
               an owner-driver who runs trucks but hasn't set up fleet management. Renders nothing

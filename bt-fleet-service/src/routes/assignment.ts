@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getActiveDriverIds, hydrateDriverIdentities } from '../lib/fleet-repo.js'
 import { requireFleetAccess } from '../lib/fleet-access.js'
 import { assignDriverAndVehicle, listFleetBookings, listLiveAssignments } from '../lib/assignment.js'
-import { listFleetVehicles } from '../lib/vehicles-repo.js'
+import { listFleetVehicles, rcNumbersFor } from '../lib/vehicles-repo.js'
 import { driverLocationKey, fleetDriversKey, getRedis, type LivePosition } from '../lib/redis.js'
 import { parseOrThrow } from '../lib/types.js'
 
@@ -24,6 +24,13 @@ const BookingListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 })
+
+// The crew badge: 'own' when the truck is the fleet's, 'outsider' when it is a hired market
+// truck (another driver's own), null when no truck is on the load yet.
+export function crewOf(vehicleId: string | null | undefined, fleetTrucks: Set<string>): 'own' | 'outsider' | null {
+  if (!vehicleId) return null
+  return fleetTrucks.has(vehicleId) ? 'own' : 'outsider'
+}
 
 export async function assignmentRoutes(app: FastifyInstance) {
   // POST /fleet/bookings/:id/assign — { driver_id, vehicle_id }.
@@ -54,15 +61,42 @@ export async function assignmentRoutes(app: FastifyInstance) {
     const owner = await requireFleetAccess(req.user, 'any')
     const query = parseOrThrow(BookingListQuery, req.query)
 
-    const [bookings, live] = await Promise.all([
+    const [bookings, live, vehicles] = await Promise.all([
       listFleetBookings(owner.id, query),
       listLiveAssignments(owner.id),
+      listFleetVehicles(owner.id),
     ])
     const assignmentByBooking = new Map(live.map(a => [a.booking_id, a]))
+    const fleetTrucks = new Set(vehicles.map(v => v.id))
+
+    // A hired market truck is not on the fleet's own truck list or roster, so name it here:
+    // its plate and its driver, for the loads this fleet is running with it.
+    const hired = bookings.filter(b => crewOf(b.vehicle_id, fleetTrucks) === 'outsider')
+    const [hiredRc, hiredNames] = hired.length === 0
+      ? [new Map<string, string>(), new Map()]
+      : await Promise.all([
+        rcNumbersFor(hired.map(b => b.vehicle_id!)),
+        hydrateDriverIdentities(hired.map(b => b.driver_id).filter((d): d is string => !!d)),
+      ])
 
     return reply.send({
       success: true,
-      data: bookings.map(b => ({ ...b, current_assignment: assignmentByBooking.get(b.id) ?? null })),
+      data: bookings.map(b => {
+        const current = assignmentByBooking.get(b.id) ?? null
+        // Own = the fleet's own truck; outsider = a hired market truck (a driver's own truck).
+        const crew = crewOf(current?.vehicle_id ?? b.vehicle_id, fleetTrucks)
+        return {
+          ...b,
+          current_assignment: current,
+          crew,
+          outsider: crew === 'outsider' && b.vehicle_id
+            ? {
+                rc_number: hiredRc.get(b.vehicle_id) ?? null,
+                driver_name: b.driver_id ? hiredNames.get(b.driver_id)?.full_name ?? null : null,
+              }
+            : null,
+        }
+      }),
     })
   })
 
@@ -78,16 +112,19 @@ export async function assignmentRoutes(app: FastifyInstance) {
 
     // Self-heal: a cold or evicted set would otherwise render an empty map for a
     // fleet that is very much on the road.
-    let driverIds = await redis.smembers(fleetDriversKey(owner.id))
-    if (driverIds.length === 0) {
-      driverIds = await getActiveDriverIds(owner.id)
-      if (driverIds.length > 0) await redis.sadd(fleetDriversKey(owner.id), ...driverIds)
+    let memberIds = await redis.smembers(fleetDriversKey(owner.id))
+    if (memberIds.length === 0) {
+      memberIds = await getActiveDriverIds(owner.id)
+      if (memberIds.length > 0) await redis.sadd(fleetDriversKey(owner.id), ...memberIds)
     }
 
     const [live, vehicles] = await Promise.all([
       listLiveAssignments(owner.id),
       listFleetVehicles(owner.id),
     ])
+    // Hired market trucks are on the map only while they run this fleet's trip: their drivers
+    // come from the fleet's own live assignments and are never added to the member set.
+    const driverIds = [...new Set([...memberIds, ...live.map(a => a.driver_id)])]
 
     const positions = driverIds.length === 0
       ? []
@@ -95,6 +132,9 @@ export async function assignmentRoutes(app: FastifyInstance) {
 
     const assignmentByDriver = new Map(live.map(a => [a.driver_id, a]))
     const rcByVehicle = new Map(vehicles.map(v => [v.id, v.rc_number]))
+    const fleetTrucks = new Set(vehicles.map(v => v.id))
+    const marketTruckIds = live.map(a => a.vehicle_id).filter(id => !fleetTrucks.has(id))
+    for (const [id, rc] of await rcNumbersFor(marketTruckIds)) rcByVehicle.set(id, rc)
     const identities = await hydrateDriverIdentities(driverIds)
 
     const data = driverIds.map((driverId, i) => {
@@ -107,6 +147,7 @@ export async function assignmentRoutes(app: FastifyInstance) {
         driver_name: identities.get(driverId)?.full_name ?? null,
         vehicle_id: assignment?.vehicle_id ?? null,
         rc_number: assignment ? rcByVehicle.get(assignment.vehicle_id) ?? null : null,
+        crew: crewOf(assignment?.vehicle_id ?? null, fleetTrucks),
         booking_id: assignment?.booking_id ?? position?.booking_id ?? null,
         is_online: position !== null,
         lat: position?.lat ?? null,

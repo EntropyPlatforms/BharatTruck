@@ -11,6 +11,7 @@ import { auctionRoutes } from './routes/auctions.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { internalFleetRoutes } from './routes/internal.js'
 import { joinRoutes } from './routes/join.js'
+import { marketRoutes } from './routes/market.js'
 import { FleetError } from './lib/types.js'
 
 const app = Fastify({
@@ -61,6 +62,8 @@ async function bootstrap() {
       // (/fleet/auctions, /fleet/bids, /fleet/live, /fleet/bookings).
       await fleet.register(auctionRoutes)
       await fleet.register(assignmentRoutes)
+      // Market trucks: hire an outsider (own truck) for one load; the driver's offer inbox.
+      await fleet.register(marketRoutes)
     }, { prefix: '/fleet' })
   })
 

@@ -26,6 +26,7 @@ import { ArrowRight, CheckCircle2, ChevronRight, Clock, KeyRound, PlayCircle, Tr
 
 import { PageHeader } from '@/components/app-shell'
 import FleetInvites from '@/components/fleet-invites'
+import MarketOffers from '@/components/market-offers'
 import { Card, Empty, ErrorNote, Loading } from '@/components/stat'
 import { CopyId, RouteRail, cityOf, loadTypeLabel, tonnes } from '@/components/driver/trip-bits'
 import { ApiError, getTrack, listBookings } from '@/lib/api'
@@ -136,6 +137,7 @@ export default function MyTripsPage() {
       {header}
 
       <div className="mb-2 empty:hidden"><FleetInvites /></div>
+      <div className="mb-2 empty:hidden"><MarketOffers /></div>
 
       {items.length === 0 ? (
         <Card>
