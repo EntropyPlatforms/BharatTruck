@@ -31,6 +31,8 @@ const db: Record<string, Row[]> = {
     { id: 'q-fleet', booking_id: 'b-open', driver_id: null, fleet_owner_id: F1, amount: 8800, status: 'submitted', submitted_at: '2026-10-02T01:00:00Z' },
   ],
   users: [{ id: 'u-shipper', full_name: 'Test Shipper' }],
+  // The shipper starred the solo driver (invite link, bulk list or by hand).
+  shipper_preferred_carriers: [{ shipper_id: 'u-shipper', carrier_kind: 'driver', carrier_id: D_SOLO }],
 }
 
 // Just enough PostgREST: eq / is.null / in / the one `or` the board sends. Everything asked is recorded.
@@ -96,6 +98,7 @@ async function main() {
   const open = board?.auctions?.find((a: Row) => a.id === 'b-open')
   check('"my bid" is the driver\'s own quote, not the fleet\'s', open?.my_bid?.id === 'q-solo', JSON.stringify(open?.my_bid))
   check('bid count covers every live bid', open?.bid_count === 2, String(open?.bid_count))
+  check('the shipper starred this driver → Preferred badge', open?.preferred_by_shipper === true, JSON.stringify(open?.preferred_by_shipper))
   check('own posted loads excluded by the caller\'s user id', asked.some(a => a.table === 'bookings' && a.params.get('shipper_id') === `neq.${U_SOLO}`), '')
 
   r = await get('/fleet/bids', U_SOLO)

@@ -8,6 +8,8 @@ import {
   starCarrier,
   unstarCarrier,
 } from '../lib/preferred/service.js'
+import { createCarrierInvite, getCurrentCarrierInvite, revokeCarrierInvite, MAX_TOKEN_LENGTH } from '../lib/preferred/invite-link.js'
+import { acceptCarrierInvite, bulkAddCarriers, previewCarrierInvite, MAX_BULK_ROWS } from '../lib/preferred/onboarding.js'
 
 // -----------------------------------------------------------
 // Preferred carriers (migration 0044). The Post-a-Load picker and the load page's bid and
@@ -34,6 +36,19 @@ import {
 const CarrierParams = z.object({
   kind: z.enum(CARRIER_KINDS as [string, ...string[]], { errorMap: () => ({ message: 'kind must be driver or fleet_owner' }) }),
   id: z.string().uuid('id must be a valid UUID'),
+})
+
+// The invite token travels in the BODY (never the URL), so it never lands in a request log.
+const TokenBody = z.object({
+  token: z.string({ required_error: 'token is required', invalid_type_error: 'token is required' })
+    .trim().min(1, 'token is required').max(MAX_TOKEN_LENGTH, 'This invite link is not valid'),
+})
+
+const BulkBody = z.object({
+  rows: z.array(z.object({
+    name: z.string().max(200).optional().nullable(),
+    mobile: z.string({ required_error: 'mobile is required' }).max(40),
+  })).min(1, 'The file has no rows').max(MAX_BULK_ROWS, `Up to ${MAX_BULK_ROWS} rows at a time`),
 })
 
 function fail(reply: FastifyReply, err: unknown) {
@@ -95,6 +110,81 @@ export async function preferredCarrierRoutes(app: FastifyInstance) {
     try {
       const data = await unstarCarrier(req.user.userId, { kind: parsed.data.kind as 'driver' | 'fleet_owner', id: parsed.data.id })
       return reply.send({ success: true, data })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+
+  // ── Onboarding carriers onto the Preferred list (invite link + bulk) ──────────
+
+  // GET /me/carriers/invite-link — the caller's current link, or null.
+  app.get('/carriers/invite-link', async (req, reply) => {
+    try {
+      return reply.send({ success: true, data: await getCurrentCarrierInvite(req.user.userId) })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+
+  // POST /me/carriers/invite-link — make a new link (30 days); any earlier one stops working.
+  app.post('/carriers/invite-link', async (req, reply) => {
+    try {
+      return reply.status(201).send({ success: true, data: await createCarrierInvite(req.user.userId) })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+
+  // DELETE /me/carriers/invite-link — turn the link off.
+  app.delete('/carriers/invite-link', async (req, reply) => {
+    try {
+      await revokeCarrierInvite(req.user.userId)
+      return reply.send({ success: true, data: { revoked: true } })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+
+  // POST /me/carriers/join/accept — a signed-in fleet owner or truck-owning driver joins the
+  // link's shipper's Preferred list.
+  app.post('/carriers/join/accept', async (req, reply) => {
+    const parsed = TokenBody.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' })
+    }
+    try {
+      return reply.send({ success: true, data: await acceptCarrierInvite(req.user.userId, parsed.data.token) })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+
+  // POST /me/carriers/bulk — { rows: [{ name?, mobile }] }, up to 200; an outcome per row.
+  app.post('/carriers/bulk', async (req, reply) => {
+    const parsed = BulkBody.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' })
+    }
+    try {
+      return reply.send({ success: true, data: { rows: await bulkAddCarriers(req.user.userId, parsed.data.rows) } })
+    } catch (err) {
+      return fail(reply, err)
+    }
+  })
+}
+
+// The ONE unauthenticated route here: the join page asks who sent the link before the carrier
+// signs in. It answers only the shipper's name and the link's expiry, and every refusal is an
+// "invalid / expired / replaced link" message, so it is no oracle for anything else. Registered
+// outside the JWT scope (index.ts); the gateway's per-IP rate limit covers it.
+export async function preferredCarrierPublicRoutes(app: FastifyInstance) {
+  app.post('/carriers/join/preview', async (req, reply) => {
+    const parsed = TokenBody.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' })
+    }
+    try {
+      return reply.send({ success: true, data: await previewCarrierInvite(parsed.data.token) })
     } catch (err) {
       return fail(reply, err)
     }

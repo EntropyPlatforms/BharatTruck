@@ -63,6 +63,12 @@ export type OpenAuction = AuctionBookingRow & {
   my_bid: QuoteRow | null
   /** How many bids the load has in total — the only competitive signal we may leak. */
   bid_count: number
+  /**
+   * The shipper who posted this load counts THIS carrier among their Preferred carriers:
+   * they starred them (migration 0044, including by invite link or bulk list) or have
+   * finished a trip with them. Only ever about the viewing carrier, never about rivals.
+   */
+  preferred_by_shipper: boolean
 }
 
 /**
@@ -163,9 +169,10 @@ export async function listOpenAuctions(
 
   // Two bounded follow-ups, both keyed by the page of ids we already have — never
   // one query per row.
-  const [{ data: quoteData }, shipperNames] = await Promise.all([
+  const [{ data: quoteData }, shipperNames, preferringShippers] = await Promise.all([
     supabase.from('quotes').select(QUOTE_COLUMNS).in('booking_id', ids),
     hydrateShipperNames(bookings.map((b) => b.shipper_id)),
+    shippersPreferring(bidder, bookings.map((b) => b.shipper_id)),
   ])
 
   const quotes = asRows<QuoteRow>(quoteData)
@@ -185,7 +192,49 @@ export async function listOpenAuctions(
     shipper_name: shipperNames.get(b.shipper_id) ?? null,
     my_bid: myBidByBooking.get(b.id) ?? null,
     bid_count: countByBooking.get(b.id) ?? 0,
+    preferred_by_shipper: preferringShippers.has(b.shipper_id),
   }))
+}
+
+/** Finished trips — the same pair bt-booking-service's Preferred list counts (preferred/rules.ts). */
+const FINISHED_TRIP_STATUSES = ['completed', 'paid']
+
+/**
+ * Which of these shippers count this carrier as Preferred: the same two sources as the
+ * shipper's own list in bt-booking-service (lib/preferred/service.ts), so the badge a carrier
+ * sees and the label the shipper sees always agree:
+ *   * starred — shipper_preferred_carriers (0044), which the invite link and bulk list also write;
+ *   * trips   — a finished trip for that shipper. A fleet trip is the FLEET's; a driver's own
+ *               trip is one with no fleet on it.
+ * A badge is decoration: any read error (including 0044 not applied yet) just means no badge.
+ */
+async function shippersPreferring(bidder: BoardBidder, shipperIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>()
+  const ids = [...new Set(shipperIds.filter(Boolean))]
+  if (ids.length === 0) return out
+  const supabase = getSupabase()
+  const kind = bidder.kind === 'fleet' ? 'fleet_owner' : 'driver'
+  const carrierId = bidder.kind === 'fleet' ? bidder.fleetOwnerId : bidder.driverId
+
+  let trips = supabase
+    .from('bookings')
+    .select('shipper_id')
+    .in('shipper_id', ids)
+    .in('status', FINISHED_TRIP_STATUSES)
+  trips = bidder.kind === 'fleet'
+    ? trips.eq('fleet_owner_id', bidder.fleetOwnerId)
+    : trips.eq('driver_id', bidder.driverId).is('fleet_owner_id', null)
+
+  const [stars, done] = await Promise.all([
+    supabase.from('shipper_preferred_carriers').select('shipper_id')
+      .eq('carrier_kind', kind).eq('carrier_id', carrierId).in('shipper_id', ids),
+    trips.limit(1000),
+  ])
+  for (const r of [stars, done]) {
+    if (r.error) continue
+    for (const row of asRows<{ shipper_id: string }>(r.data)) out.add(row.shipper_id)
+  }
+  return out
 }
 
 /**

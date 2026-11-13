@@ -750,6 +750,8 @@ export type OpenAuction = AuctionBooking & {
    * service exposes — rival amounts and identities are never sent.
    */
   bid_count: number
+  /** The shipper who posted this load counts this carrier as Preferred (starred or past trips). */
+  preferred_by_shipper?: boolean
 }
 
 export type FleetBid = Quote & {
