@@ -8,7 +8,7 @@ import { quoteRoutes } from './routes/quotes.js'
 import { feedRoutes } from './routes/feed.js'
 import { summaryRoutes } from './routes/summary.js'
 import { savedAddressRoutes } from './routes/saved-addresses.js'
-import { preferredCarrierRoutes } from './routes/preferred-carriers.js'
+import { preferredCarrierPublicRoutes, preferredCarrierRoutes } from './routes/preferred-carriers.js'
 import { locationRoutes } from './routes/location.js'
 import { internalRoutes } from './routes/internal.js'
 import { opsRoutes } from './routes/ops.js'
@@ -41,6 +41,8 @@ async function bootstrap() {
 
   // Public, unauthenticated: unsubscribe links must work from a mail client.
   await app.register(notificationRoutes, { prefix: '/notifications' })
+  // Public: the carrier join page reads who sent a shipper's invite link before sign-in.
+  await app.register(preferredCarrierPublicRoutes, { prefix: '/me' })
 
   // Auth-gated routes (user JWT)
   await app.register(async (authedApp) => {

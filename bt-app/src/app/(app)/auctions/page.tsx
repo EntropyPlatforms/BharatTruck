@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ChevronRight, Clock, Hourglass, Info, Package, RefreshCw, Trophy, Users,
+  ChevronRight, Clock, Hourglass, Info, Package, RefreshCw, Star, Trophy, Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/app-shell'
 import { Card, CardHead, Empty, ErrorNote, IconTile, Loading, Stat } from '@/components/stat'
@@ -46,6 +46,16 @@ import {
 } from '@/lib/ui'
 
 type Tab = 'open' | 'bids' | 'won'
+
+/** This load's shipper counts you among their Preferred carriers (they starred or invited you, or you've finished a trip for them). */
+function PreferredByShipper() {
+  return (
+    <span className={cx(pill('brand'), 'ml-1.5 align-middle')} title="This shipper has you on their Preferred carriers">
+      <Star className="w-3 h-3 fill-current" aria-hidden />
+      Preferred
+    </span>
+  )
+}
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'open', label: 'Open loads' },
@@ -405,6 +415,7 @@ function OpenBoard({ rows, onBid }: { rows: OpenAuction[]; onBid: (a: OpenAuctio
                       <div className="mt-0.5 text-xs text-gray-500">{loadLine(a)}</div>
                       <div className="text-xs text-gray-500 truncate">
                         {a.shipper_name || '—'} · {shortDate(a.pickup_date)}
+                        {a.preferred_by_shipper && <PreferredByShipper />}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -469,6 +480,7 @@ function OpenBoard({ rows, onBid }: { rows: OpenAuction[]; onBid: (a: OpenAuctio
 
                       <td className={TD}>
                         <span className="text-gray-700 truncate block max-w-[130px]">{a.shipper_name || '—'}</span>
+                        {a.preferred_by_shipper && <PreferredByShipper />}
                       </td>
 
                       <td className={cx(TD, 'whitespace-nowrap')}>

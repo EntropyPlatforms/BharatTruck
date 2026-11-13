@@ -874,6 +874,55 @@ export function unstarCarrier(kind: CarrierKind, id: string) {
   return request<{ kind: CarrierKind; id: string; starred: false }>(`/me/carriers/${kind}/${id}/star`, { method: 'DELETE' })
 }
 
+// ── Bringing carriers onto the Preferred list: invite link + bulk list (bt-booking-service) ──
+//
+// One link per shipper, valid 30 days. A fleet owner, or a driver with their own truck, who
+// opens it and accepts is added to the shipper's Preferred carriers. Same fragment-only token
+// handling as the fleet's driver link (/join/carrier#<token>).
+
+export type CarrierInviteLink = { token: string; expires_at: string }
+
+export function carrierInviteUrl(token: string): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}/join/carrier#${token}`
+}
+
+export function getCarrierInviteLink() { return request<CarrierInviteLink | null>('/me/carriers/invite-link') }
+export function createCarrierInviteLink() { return request<CarrierInviteLink>('/me/carriers/invite-link', { method: 'POST' }) }
+export function revokeCarrierInviteLink() { return request<{ revoked: true }>('/me/carriers/invite-link', { method: 'DELETE' }) }
+
+export type CarrierJoinPreview = { shipper_name: string | null; expires_at: string }
+export type CarrierJoinResult = { shipper_name: string | null; kind: CarrierKind; added: boolean }
+
+/** PUBLIC — who sent this link. No sign-in, no Authorization header. */
+export async function previewCarrierInvite(token: string) {
+  return parse<CarrierJoinPreview>(await fetch(`${API_BASE}/api/me/carriers/join/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }))
+}
+
+export function acceptCarrierInvite(token: string) {
+  return request<CarrierJoinResult>('/me/carriers/join/accept', { method: 'POST', body: JSON.stringify({ token }) })
+}
+
+export const BULK_CARRIER_LIMIT = 200
+export type BulkCarrierStatus =
+  | 'added' | 'already_added' | 'not_on_bharattruck' | 'needs_truck' | 'invalid_mobile' | 'duplicate' | 'self'
+export type BulkCarrierRow = {
+  row: number
+  name: string | null
+  mobile: string
+  status: BulkCarrierStatus
+  carrier: { kind: CarrierKind; id: string; name: string | null } | null
+}
+
+/** Up to 200 rows of { name?, mobile }; an outcome per row (never all-or-nothing). */
+export function addCarriersBulk(rows: Array<{ name?: string; mobile: string }>) {
+  return request<{ rows: BulkCarrierRow[] }>('/me/carriers/bulk', { method: 'POST', body: JSON.stringify({ rows }) })
+}
+
 // ── Ship surfaces (Post a Load / My Loads / load detail — Phase 2) ─────────────
 //
 // The shipper flow, ported from shipper/src/lib/api.ts into this client's style:

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Home, Package, PackagePlus, Navigation,
-  LayoutDashboard, Map, Truck, Users, Gavel, Route, TrendingUp, Fuel, Settings, ClipboardCheck, IdCard,
+  LayoutDashboard, Map, Truck, Users, Gavel, Star, Route, TrendingUp, Fuel, Settings, ClipboardCheck, IdCard,
 } from 'lucide-react'
 import type { Capability } from './types'
 
@@ -55,6 +55,8 @@ export const NAV: NavItem[] = [
 
   { href: '/loads', label: 'My Loads',    icon: Package,     gate: 'ship', startsGroup: true, group: 'Shipping' },
   { href: '/post',  label: 'Post a Load', icon: PackagePlus, gate: 'ship' },
+  // The shipper's Preferred carriers + invite link / CSV list to bring more in.
+  { href: '/carriers', label: 'My carriers', icon: Star, gate: 'ship' },
 
   { href: '/my-trips', label: 'My Trips', icon: Navigation, gate: 'drive', startsGroup: true, group: 'Driving' },
   // A driver's OWN record — details, DL, bank — completed with no truck (2026-09-30).
