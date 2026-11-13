@@ -464,6 +464,8 @@ export type LivePosition = {
   heading: number | null
   speed_kmh: number | null
   updated_at: string | null
+  /** own = a fleet truck; outsider = a hired market truck on this fleet's trip. */
+  crew?: Crew | null
 }
 
 // ── Bookings / assignment ────────────────────────────────────
@@ -489,6 +491,58 @@ export type FleetBooking = {
   created_at: string
   vehicle?: { rc_number: string } | null
   driver?: { full_name: string | null } | null
+  /** Own = the fleet's truck; outsider = a hired market truck. null until a truck is on it. */
+  crew?: Crew | null
+  /** A hired market truck's plate and driver (they are not on the fleet's own lists). */
+  outsider?: { rc_number: string | null; driver_name: string | null } | null
+}
+
+// ── Market trucks (outsider crew, bt-fleet-service routes/market.ts) ─────────
+
+export type Crew = 'own' | 'outsider'
+
+export type MarketTruck = {
+  id: string
+  rc_number: string
+  model_category: string | null
+  body_type: string | null
+  capacity_tons: number | null
+  rc_status: string | null
+}
+
+/** GET /fleet/market-drivers?mobile= — a driver who owns a truck, found by exact mobile. */
+export type MarketDriver = {
+  driver_id: string
+  full_name: string | null
+  city: string | null
+  in_your_fleet: boolean
+  is_you: boolean
+  trucks: MarketTruck[]
+}
+
+/** The fleet's open offer on one of its loads. */
+export type MarketOffer = {
+  booking_id: string
+  fleet_owner_id: string
+  driver_id: string
+  vehicle_id: string
+  at: string
+  expires_at: string
+  driver_name: string | null
+  rc_number: string | null
+}
+
+/** A driver's inbox row: a fleet wants to hire their truck for this load. */
+export type MarketLoadOffer = {
+  booking_id: string
+  fleet: { company_name: string; city: string | null } | null
+  rc_number: string | null
+  source_address: string
+  destination_address: string
+  pickup_date: string
+  weight_kg: number
+  load_type: string
+  expires_at: string
 }
 
 export type ModelCategory = {

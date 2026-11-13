@@ -19,7 +19,9 @@ import {
   bidderIsRelatedParty,
   getFleetOwnerByUserId,
   hasLiveVehicleAssignment,
+  activeFleetIdsOfDriver,
   isEmployedDriver,
+  isMarketHireFor,
   stripCommercialFields,
   type Bidder,
   type PriceMasked,
@@ -357,6 +359,14 @@ export async function getBooking(
       return withViewer(await attachConsignee(masked, actor), relations, false)
     }
 
+    // A market hire (an outsider running a fleet's load on their own truck) sees the job, not
+    // the fleet's price — fleet.isMarketHireFor.
+    if (assignedToMe && booking.fleet_owner_id &&
+        isMarketHireFor(booking, driverId, snapshot.fleet_owner_id ?? null, await activeFleetIdsOfDriver(driverId))) {
+      const masked = { ...stripCommercialFields(booking), assigned_to_me: true }
+      return withViewer(await attachConsignee(masked, actor), relations, false)
+    }
+
     const open = { ...booking, assigned_to_me: assignedToMe }
     return withViewer(await attachConsignee(open, actor), relations, true)
   }
@@ -427,13 +437,20 @@ export async function listBookings(
     canBrowseMarketplace,
   })
   const withConsignee = await attachConsignees(bookings, actor)
+  // Market hires (fleet.isMarketHireFor): only looked up when some row could be one.
+  const driverId = scope?.driverId ?? null
+  const viewerFleet = snapshot.fleet_owner_id ?? null
+  const mayBeHire = (b: { fleet_owner_id: string | null; driver_id: string | null }) =>
+    !!driverId && isMarketHireFor(b, driverId, viewerFleet, new Set())
+  const memberOf = driverId && withConsignee.some(mayBeHire) ? await activeFleetIdsOfDriver(driverId) : new Set<string>()
   // Commercials follow the RELATION, per row. An employed driver "sees the job, not the
   // money" on loads they DRIVE — but a load they POSTED themselves is their own shipper
   // load, and hiding its price from the shipper who set it makes no sense. So a row's
   // money is masked only when the viewer is employed AND is not that row's shipper.
   return withConsignee.map((b) => {
     const relations = relationsToBooking(b, snapshot)
-    const sees = !scope?.employed || relations.includes('shipper')
+    const hired = !!driverId && isMarketHireFor(b, driverId, viewerFleet, memberOf)
+    const sees = (!scope?.employed && !hired) || relations.includes('shipper')
     return withViewer(sees ? b : stripCommercialFields(b), relations, sees)
   })
 }

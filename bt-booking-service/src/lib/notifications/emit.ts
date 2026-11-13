@@ -580,6 +580,45 @@ export async function emitFleetInviteAnswered(
   })
 }
 
+/**
+ * A fleet wants to hire this driver's own truck (a market truck) for one load → the driver
+ * decides on Home. Names the route so they can judge it from the mail alone; no price — the
+ * hire is agreed between them and the fleet.
+ */
+export async function emitMarketLoadOffer(
+  detail: {
+    bookingId: string
+    driverId: string
+    fleetOwnerId: string
+    rcNumber: string | null
+    sourceAddress: string | null
+    destinationAddress: string | null
+    pickupDate: string | null
+  },
+  log?: Logger,
+): Promise<void> {
+  await safely(log, 'market_load_offer', async () => {
+    const driver = await recipientByDriverId(detail.driverId)
+    if (!driver) return
+    const owner = await recipientByFleetOwnerId(detail.fleetOwnerId)
+
+    await enqueueNotification({
+      event: 'market_load_offer',
+      to: driver.email,
+      userId: driver.userId,
+      payload: {
+        company_name: owner?.companyName ?? null,
+        source_address: detail.sourceAddress,
+        destination_address: detail.destinationAddress,
+        pickup_date: detail.pickupDate,
+        rc_number: detail.rcNumber,
+      },
+      // One mail per offer: a re-sent offer for the same load and driver is the same decision.
+      dedupeKey: `market_load_offer:${detail.bookingId}:${detail.driverId}`,
+    }, log)
+  })
+}
+
 // -----------------------------------------------------------
 // Account
 // -----------------------------------------------------------

@@ -685,6 +685,35 @@ const TEMPLATES: Record<NotificationEvent, Template> = {
     }
   },
 
+  market_load_offer: (p, ctx) => {
+    const company = t(p.company_name) || 'A fleet'
+    const route = [t(p.source_address), t(p.destination_address)].filter(Boolean).join(' → ')
+    const truck = t(p.rc_number)
+    const when = t(p.pickup_date)
+    return {
+      subject: `${company} wants to hire your truck${route ? ` for ${route}` : ''}`,
+      heading: 'A fleet wants to hire your truck',
+      preheader: `${company} offered you a load. Accept or decline in the app within 24 hours.`,
+      tone: 'neutral',
+      bodyHtml:
+        `<p style="margin:0 0 12px 0"><strong class="bt-strong" style="color:${INK}">${h(company)}</strong>
+         wants to hire ${truck ? `your truck <strong class="bt-strong" style="color:${INK}">${h(truck)}</strong>` : 'your truck'}
+         for one load${route ? `: ${h(route)}` : ''}${when ? `, pickup ${h(when)}` : ''}.</p>
+         <p style="margin:0">You stay independent — this is one trip, not joining their fleet. Agree the
+         payment with them, then accept or decline on your Home page. The offer lapses after 24 hours.</p>`,
+      bodyText:
+        `${company} wants to hire ${truck ? `your truck ${truck}` : 'your truck'} for one load` +
+        `${route ? `: ${route}` : ''}${when ? `, pickup ${when}` : ''}.
+
+` +
+        `You stay independent — this is one trip, not joining their fleet. Agree the payment with them, ` +
+        `then accept or decline on your Home page. The offer lapses after 24 hours.`,
+      cta: ctx.driverBaseUrl
+        ? { label: 'Review the offer', url: `${ctx.driverBaseUrl.replace(/\/+$/, '')}/dashboard` }
+        : null,
+    }
+  },
+
   // ── Account ─────────────────────────────────────────────────
 
   password_changed: (p, _ctx) => ({

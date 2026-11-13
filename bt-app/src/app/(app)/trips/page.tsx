@@ -4,20 +4,21 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type R
 import Link from 'next/link'
 import {
   AlertTriangle, Check, CheckCircle2, ChevronDown, Clock, FileText, Info, Layers, Play, RefreshCw,
-  Truck, UserRound, Users, X,
+  Search, Truck, UserRound, Users, X,
 } from 'lucide-react'
 import { PageHeader } from '@/components/app-shell'
 import { Card, CardHead, Empty, ErrorNote, IconTile, Loading, Stat } from '@/components/stat'
 import { Avatar, Modal, RouteLine, TD, TH, THEAD_ROW, TR, fmtPhone } from '@/components/fleet-ops/bits'
 import {
-  ApiError, assignToBooking, listFleetBookings, listFleetDrivers, listVehicles,
+  ApiError, assignToBooking, findMarketDriver, getMarketOffer, listFleetBookings, listFleetDrivers,
+  listVehicles, sendMarketOffer, withdrawMarketOffer,
 } from '@/lib/api'
 import { inr, inrCompact, shortDate, timeAgo, tons } from '@/lib/format'
 import { bookingStatusConfig } from '@/lib/status'
 import { consolidationSuggestions, type ConsolidationSuggestion } from '@/lib/consolidation'
-import type { BookingStatus, FleetBooking, FleetDriver, Vehicle } from '@/lib/types'
+import type { BookingStatus, Crew, FleetBooking, FleetDriver, MarketDriver, MarketOffer, Vehicle } from '@/lib/types'
 import {
-  BTN_BLUE, BTN_BLUE_SOLID, BTN_PRIMARY, BTN_SECONDARY, LABEL, MONO, cx, pill,
+  BTN_BLUE, BTN_BLUE_SOLID, BTN_PRIMARY, BTN_SECONDARY, INPUT, LABEL, MONO, cx, pill,
 } from '@/lib/ui'
 
 /**
@@ -458,6 +459,10 @@ export default function TripsPage() {
             // the busy-truck map and the roster catch up underneath it.
             void load()
           }}
+          onOfferSent={(msg) => {
+            setAssignTarget(null)
+            setNotice(msg)
+          }}
         />
       )}
     </div>
@@ -553,7 +558,10 @@ function BookingTable({
             const driver = b.driver_id ? driverById.get(b.driver_id) ?? null : null
             const shipper = (b.shipper_name ?? '').trim()
             const assignable = b.status === 'accepted' && needsCrew(b)
-            const driverName = b.driver_id ? (driver ? nameOf(driver) ?? 'Unnamed driver' : 'Driver off this roster') : 'No driver'
+            const hired = b.crew === 'outsider'
+            const driverName = b.driver_id
+              ? (driver ? nameOf(driver) ?? 'Unnamed driver' : hired ? b.outsider?.driver_name ?? 'Hired driver' : 'Driver off this roster')
+              : 'No driver'
 
             return (
               <tr key={b.id} className={cx(TR, 'group')}>
@@ -592,8 +600,11 @@ function BookingTable({
                     <span className="flex items-center gap-2.5 min-w-0">
                       <Avatar name={b.driver_id ? driverName : null} size="sm" muted={!driver} />
                       <span className="min-w-0">
-                        <span className={cx(MONO, 'block text-sm font-semibold', b.vehicle_id ? 'text-blue-700' : 'text-gray-400')}>
-                          {b.vehicle_id ? vehicle?.rc_number ?? 'Truck outside this fleet' : 'No truck'}
+                        <span className="flex items-center gap-1.5">
+                          <span className={cx(MONO, 'text-sm font-semibold', b.vehicle_id ? 'text-blue-700' : 'text-gray-400')}>
+                            {b.vehicle_id ? vehicle?.rc_number ?? (hired ? b.outsider?.rc_number : null) ?? 'Truck outside this fleet' : 'No truck'}
+                          </span>
+                          <CrewBadge crew={b.crew} />
                         </span>
                         <span className="block text-xs text-gray-500 truncate max-w-[160px]">{driverName}</span>
                       </span>
@@ -641,6 +652,191 @@ function PickupUrgency({ iso }: { iso: string }) {
   if (d === 0) return <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-600"><Clock className="w-3.5 h-3.5" />Pickup today</div>
   if (d === 1) return <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-orange-600"><Clock className="w-3.5 h-3.5" />Pickup tomorrow</div>
   return <div className="text-xs text-gray-400">in {d} days</div>
+}
+
+// ── Own / Outsider ────────────────────────────────────────────
+
+/** Own = the fleet's driver on the fleet's truck; Outsider = a hired market truck (the driver's own). */
+function CrewBadge({ crew }: { crew?: Crew | null }) {
+  if (!crew) return null
+  return crew === 'own'
+    ? <span className={pill('blue')} title="Your fleet's driver on your fleet's truck">Own</span>
+    : <span className={pill('amber')} title="A market truck: an independent driver on their own truck, hired for this load">Outsider</span>
+}
+
+// ── Hire a market truck ───────────────────────────────────────
+
+/**
+ * The Outsider path of the assign dialog. Find a driver who OWNS a truck by their mobile, pick
+ * the truck, send the offer. Nothing is bound until the driver accepts in their own app (offers
+ * lapse after 24 h); then the load shows here as crewed with an Outsider badge. The hire's
+ * payment is between the fleet and the driver, outside the app.
+ */
+function MarketHire({ booking, onSent }: { booking: FleetBooking; onSent: (msg: string) => void }) {
+  const [offer, setOffer] = useState<MarketOffer | null | undefined>(undefined)
+  const [mobile, setMobile] = useState('')
+  const [found, setFound] = useState<MarketDriver | null>(null)
+  const [truckId, setTruckId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    getMarketOffer(booking.id).then(o => { if (live) setOffer(o) }).catch(() => { if (live) setOffer(null) })
+    return () => { live = false }
+  }, [booking.id])
+
+  async function find(e: FormEvent) {
+    e.preventDefault()
+    setErr(null); setFound(null); setTruckId('')
+    setBusy(true)
+    try {
+      const d = await findMarketDriver(mobile)
+      setFound(d)
+      const fits = d.trucks.filter(t => t.capacity_tons == null || booking.weight_kg <= t.capacity_tons * 1000)
+      if (fits.length === 1) setTruckId(fits[0].id)
+    } catch (e2) {
+      setErr(errText(e2, 'Could not look up that number'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function send() {
+    if (!found || !truckId) return
+    setBusy(true); setErr(null)
+    try {
+      const o = await sendMarketOffer(booking.id, found.driver_id, truckId)
+      setOffer(o)
+      setFound(null); setMobile('')
+      onSent(`Offer sent to ${o.driver_name ?? 'the driver'} for ${o.rc_number ?? 'their truck'}. It lapses in 24 hours if they don't answer.`)
+    } catch (e2) {
+      setErr(errText(e2, 'Could not send the offer'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function withdraw() {
+    setBusy(true); setErr(null)
+    try {
+      await withdrawMarketOffer(booking.id)
+      setOffer(null)
+    } catch (e2) {
+      setErr(errText(e2, 'Could not withdraw the offer'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (offer === undefined) return <Loading label="Checking for an open offer" />
+
+  if (offer) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">
+            Waiting for {offer.driver_name ?? 'the driver'} to accept
+            {offer.rc_number ? <> · <span className={MONO}>{offer.rc_number}</span></> : null}
+          </p>
+          <p className="mt-0.5">
+            Sent {timeAgo(offer.at)}. It lapses {shortDate(offer.expires_at)} if they don&apos;t answer. Once they accept,
+            this load shows as crewed with an Outsider badge.
+          </p>
+        </div>
+        {err && <ErrorNote message={err} />}
+        <button type="button" onClick={withdraw} disabled={busy} className={BTN_SECONDARY}>
+          {busy ? 'Withdrawing…' : 'Withdraw the offer'}
+        </button>
+      </div>
+    )
+  }
+
+  const trucks = found?.trucks ?? []
+  const blocked = found ? found.is_you || found.in_your_fleet : false
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Hire an independent driver with <strong>their own truck</strong> for this one load. They don&apos;t join your fleet,
+        and only drivers who own a truck can be hired. Agree the payment with them directly.
+      </p>
+      <form onSubmit={find} className="flex items-end gap-2">
+        <div className="flex-1">
+          <label htmlFor="market-mobile" className={LABEL}>Driver&apos;s mobile number</label>
+          <input
+            id="market-mobile"
+            inputMode="tel"
+            value={mobile}
+            onChange={e => setMobile(e.target.value)}
+            placeholder="10-digit mobile"
+            className={INPUT}
+          />
+        </div>
+        <button type="submit" disabled={busy || mobile.trim().length < 10} className={cx(BTN_BLUE, 'h-11')}>
+          <Search className="w-4 h-4" /> Find
+        </button>
+      </form>
+
+      {found && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50/70 px-4 py-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <Avatar name={found.full_name} size="sm" />
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold text-gray-900">{found.full_name ?? 'Driver'}</p>
+              {found.city && <p className="text-gray-500">{found.city}</p>}
+            </div>
+          </div>
+          {found.is_you ? (
+            <p className="text-sm text-gray-700">That&apos;s you. Use the Own crew tab to send your own truck.</p>
+          ) : found.in_your_fleet ? (
+            <p className="text-sm text-gray-700">This driver is already in your fleet. Use the Own crew tab to assign them.</p>
+          ) : (
+            <fieldset className="space-y-2">
+              <legend className={LABEL}>Their truck</legend>
+              {trucks.map(t => {
+                const tooSmall = t.capacity_tons != null && booking.weight_kg > t.capacity_tons * 1000
+                return (
+                  <label
+                    key={t.id}
+                    className={cx(
+                      'flex items-center gap-3 rounded-lg border bg-white px-3 py-2 text-sm',
+                      tooSmall ? 'opacity-55 cursor-not-allowed border-gray-200' : 'cursor-pointer',
+                      truckId === t.id ? 'border-blue-600 ring-2 ring-blue-100' : 'border-gray-200',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="market-truck"
+                      value={t.id}
+                      checked={truckId === t.id}
+                      disabled={tooSmall}
+                      onChange={() => setTruckId(t.id)}
+                    />
+                    <span className={cx(MONO, 'font-semibold')}>{t.rc_number}</span>
+                    <span className="text-gray-500 truncate">
+                      {[t.model_category, t.body_type, t.capacity_tons != null ? `${t.capacity_tons} t` : null].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="ml-auto">
+                      {tooSmall ? <span className={pill('slate')}>Too small</span>
+                        : t.rc_status === 'verified' ? <span className={pill('green')}>RC verified</span> : null}
+                    </span>
+                  </label>
+                )
+              })}
+            </fieldset>
+          )}
+        </div>
+      )}
+
+      {err && <ErrorNote message={err} />}
+
+      {found && !blocked && (
+        <button type="button" onClick={send} disabled={busy || !truckId} className={cx(BTN_PRIMARY, 'w-full')}>
+          {busy ? 'Sending…' : 'Send the offer'}
+        </button>
+      )}
+    </div>
+  )
 }
 
 // ── Assign ────────────────────────────────────────────────────
@@ -754,7 +950,7 @@ function Picker({
 }
 
 function AssignDialog({
-  booking, vehicles, drivers, refreshCrew, onClose, onAssigned,
+  booking, vehicles, drivers, refreshCrew, onClose, onAssigned, onOfferSent,
 }: {
   booking: FleetBooking
   vehicles: FleetVehicleRow[]
@@ -762,12 +958,14 @@ function AssignDialog({
   refreshCrew: () => Promise<{ vehicles: FleetVehicleRow[]; drivers: RosterRow[] } | null>
   onClose: () => void
   onAssigned: (rc: string, driverName: string) => void
+  onOfferSent: (msg: string) => void
 }) {
   const [driverId, setDriverId] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [conflict, setConflict] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<Crew>('own')
   const driverLabelId = useId()
   const truckLabelId = useId()
 
@@ -861,7 +1059,12 @@ function AssignDialog({
     const phone = fmtPhone(phoneOf(d))?.replace(/^\+91\s*/, '')
     return {
       value: d.driver_id,
-      label: <>{label}{phone ? <span className="text-gray-500 font-normal"> · {phone}</span> : null}</>,
+      label: (
+        <>
+          {label}{phone ? <span className="text-gray-500 font-normal"> · {phone}</span> : null}
+          <span className={cx(pill('blue'), 'ml-2')}>Own</span>
+        </>
+      ),
       tag: on ? `On a trip · ${on}` : 'Free',
       tone: on ? 'busy' : 'free',
       disabled: Boolean(on),
@@ -896,7 +1099,27 @@ function AssignDialog({
   })
 
   return (
-    <Modal title="Assign a driver and a truck" sub="Choose from available drivers and trucks." onClose={onClose} width="sm:max-w-xl">
+    <Modal title="Assign a driver and a truck" sub="Your own crew, or hire a market truck for this load." onClose={onClose} width="sm:max-w-xl">
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1" role="tablist" aria-label="Who runs this load">
+        {([['own', 'Own crew'], ['outsider', 'Hire a market truck']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mode === key}
+            onClick={() => setMode(key)}
+            className={cx(
+              'h-9 rounded-lg text-sm font-semibold transition-colors',
+              mode === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'outsider' ? (
+        <MarketHire booking={booking} onSent={onOfferSent} />
+      ) : (
       <form onSubmit={submit} className="space-y-4">
         <div className="rounded-xl border border-gray-200 bg-gray-50/70 px-4 py-3.5 flex items-start gap-3.5">
           <IconTile icon={<FileText />} tint="slate" />
@@ -974,6 +1197,7 @@ function AssignDialog({
           </button>
         </div>
       </form>
+      )}
     </Modal>
   )
 }

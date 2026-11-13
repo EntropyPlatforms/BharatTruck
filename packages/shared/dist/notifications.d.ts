@@ -93,7 +93,7 @@ export declare function smtpTransportOptions(): {
  * a producer can deploy ahead of the renderer without breaking the drain loop — the
  * rows simply wait for the template to ship.
  */
-export type NotificationEvent = 'quote_received' | 'quote_countered' | 'quote_awarded' | 'quote_lost' | 'quote_withdrawn' | 'booking_accepted' | 'trip_started' | 'trip_completed' | 'booking_cancelled' | 'ops_override' | 'receiver_email_missing' | 'payment_settled' | 'payout_recorded' | 'fleet_invite' | 'fleet_invite_answered' | 'password_changed' | 'alert_raised';
+export type NotificationEvent = 'quote_received' | 'quote_countered' | 'quote_awarded' | 'quote_lost' | 'quote_withdrawn' | 'booking_accepted' | 'trip_started' | 'trip_completed' | 'booking_cancelled' | 'ops_override' | 'receiver_email_missing' | 'payment_settled' | 'payout_recorded' | 'fleet_invite' | 'fleet_invite_answered' | 'market_load_offer' | 'password_changed' | 'alert_raised';
 /**
  * Delivery categories.
  *

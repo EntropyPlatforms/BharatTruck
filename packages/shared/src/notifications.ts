@@ -185,6 +185,7 @@ export type NotificationEvent =
   // ── Fleet ─────────────────────────────────────────────────────
   | 'fleet_invite'          // owner invited a driver → driver
   | 'fleet_invite_answered' // driver accepted/declined → owner
+  | 'market_load_offer'     // a fleet wants to hire a driver's own truck for one load → driver
   // ── Account ───────────────────────────────────────────────────
   | 'password_changed'      // security notice        → user
   // ── Alerts ────────────────────────────────────────────────────
@@ -220,6 +221,7 @@ export const EVENT_CATEGORY: Record<NotificationEvent, NotificationCategory> = {
   payout_recorded:       'transactional',
   fleet_invite:          'transactional', // requires the recipient to act
   fleet_invite_answered: 'trip_updates',
+  market_load_offer:     'transactional', // requires the recipient to act, and expires in 24 h
   password_changed:      'transactional', // security notice — never mutable
   // Optional: an alert is a nudge about a state the person can already see in the app
   // (Home feed), so it rides the trip-updates preference rather than forcing delivery.

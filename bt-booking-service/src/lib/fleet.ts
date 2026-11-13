@@ -262,6 +262,41 @@ export async function isEmployedDriver(driverId: string): Promise<boolean> {
 }
 
 // -----------------------------------------------------------
+// MARKET HIRE (2026-11-13) — a fleet can hire an OUTSIDER (an independent driver on their own
+// truck) to run one load it won (bt-fleet-service routes/market.ts). The fleet is the commercial
+// party: the shipper's price is between the shipper and the fleet, and what the fleet pays the
+// outsider is agreed between them. So a driver running a fleet's load who is NOT a member of
+// that fleet (and is not the fleet itself) must not see quoted_price / final_price /
+// min_acceptable — the same mask an employed driver gets, for the same reason.
+// -----------------------------------------------------------
+
+/** Pure: is this booking a market hire for this driver? `memberOf` = fleets the driver is an ACTIVE member of. */
+export function isMarketHireFor(
+  booking: { fleet_owner_id: string | null; driver_id: string | null },
+  driverId: string,
+  viewerFleetOwnerId: string | null,
+  memberOf: ReadonlySet<string>,
+): boolean {
+  if (!booking.fleet_owner_id || booking.driver_id !== driverId) return false
+  if (viewerFleetOwnerId && viewerFleetOwnerId === booking.fleet_owner_id) return false
+  return !memberOf.has(booking.fleet_owner_id)
+}
+
+/** Fleets this driver is an ACTIVE member of. Empty on a database without the fleet tables. */
+export async function activeFleetIdsOfDriver(driverId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('fleet_drivers')
+    .select('fleet_owner_id')
+    .eq('driver_id', driverId)
+    .eq('status', 'active')
+  if (error) {
+    if (isMissingRelation(error)) return new Set()
+    throw new Error(`Fleet affiliation lookup failed: ${error.message}`)
+  }
+  return new Set(((data ?? []) as { fleet_owner_id: string }[]).map((r) => r.fleet_owner_id))
+}
+
+// -----------------------------------------------------------
 // hasLiveVehicleAssignment
 // A live pairing is a vehicle_assignments row that has not been released.
 // Only ever consulted for a booking that already carries fleet_owner_id, so a

@@ -46,6 +46,16 @@ const NotifyBodySchema = z.discriminatedUnion('event', [
     response:       z.enum(['accepted', 'declined']),
   }),
   z.object({
+    event:          z.literal('market_load_offer'),
+    booking_id:     z.string().uuid(),
+    driver_id:      z.string().uuid(),
+    fleet_owner_id: z.string().uuid(),
+    rc_number:      z.string().max(20).nullable().optional(),
+    source_address:      z.string().max(500).nullable().optional(),
+    destination_address: z.string().max(500).nullable().optional(),
+    pickup_date:         z.string().max(40).nullable().optional(),
+  }),
+  z.object({
     event:      z.literal('password_changed'),
     user_id:    z.string().uuid(),
     changed_at: z.string().optional(),
@@ -154,6 +164,13 @@ export async function internalRoutes(app: FastifyInstance) {
           inviteId: e.invite_id, driverId: e.driver_id,
           fleetOwnerId: e.fleet_owner_id, response: e.response,
         },
+        req.log,
+      )
+    } else if (e.event === 'market_load_offer') {
+      await notify.emitMarketLoadOffer(
+        { bookingId: e.booking_id, driverId: e.driver_id, fleetOwnerId: e.fleet_owner_id, rcNumber: e.rc_number ?? null,
+          sourceAddress: e.source_address ?? null, destinationAddress: e.destination_address ?? null,
+          pickupDate: e.pickup_date ?? null },
         req.log,
       )
     } else {

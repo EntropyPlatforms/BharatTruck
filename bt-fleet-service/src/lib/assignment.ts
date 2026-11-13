@@ -1,7 +1,7 @@
 import { bookingFreesTruck, TRIP_END_FREE_STATUSES } from './booking-status.js'
 import { getSupabase } from './supabase.js'
 import { getActiveAffiliation } from './fleet-repo.js'
-import { getFleetVehicle } from './vehicles-repo.js'
+import { getDriverOwnedVehicle, getFleetVehicle } from './vehicles-repo.js'
 import { assertVehicleAvailable } from './vehicle-schedule.js'
 import {
   asRow,
@@ -43,7 +43,7 @@ const ASSIGNMENT_COLUMNS =
 // Bookings the fleet won but has not yet crewed. Assigning before award has nothing
 // to assign to; assigning after departure is mid-trip reassignment, which is
 // explicitly out of v1 (Q13).
-const ASSIGNABLE_STATUSES = ['accepted']
+export const ASSIGNABLE_STATUSES = ['accepted']
 
 // Once a booking reaches one of these, its truck and driver are free again.
 // Shared with vehicle-schedule.ts via booking-status.ts (FB-01).
@@ -83,7 +83,16 @@ export type AssignInput = {
   driverId: string
   vehicleId: string
   assignedBy: string
+  /**
+   * Set ONLY by the market-offer accept route, from the fleet's stored offer the driver just
+   * accepted: the outsider crew (driver + their own truck) this fleet is hiring for this one
+   * booking. It is what lets the seam below accept a truck that is not the fleet's.
+   */
+  marketOffer?: MarketHire | null
 }
+
+/** The outsider crew named in an accepted market offer. */
+export type MarketHire = { driverId: string; vehicleId: string }
 
 export type AssignResult = {
   assignment: VehicleAssignmentRow
@@ -96,11 +105,14 @@ export type AssignResult = {
 export type ExecutionLookups = {
   vehicle(fleetOwnerId: string, vehicleId: string): Promise<{ id: string } | null>
   affiliation(fleetOwnerId: string, driverId: string): Promise<{ id: string } | null>
+  /** A truck owned by exactly this driver (not a fleet truck). Market hires only. */
+  driverVehicle?(driverId: string, vehicleId: string): Promise<{ id: string } | null>
 }
 
 const LIVE_LOOKUPS: ExecutionLookups = {
   vehicle: getFleetVehicle,
   affiliation: getActiveAffiliation,
+  driverVehicle: getDriverOwnedVehicle,
 }
 
 // mayExecuteFor — THE sub-contract seam (D-24), and the ONLY place that couples the
@@ -124,11 +136,26 @@ const LIVE_LOOKUPS: ExecutionLookups = {
 // NOT a mutual-exclusion check. Whether the truck is FREE is the vehicle_assignments
 // insert's job, with D-19's read in front of it for a refusal that names the trip.
 // This answers only "whose assets are these".
+//
+// MARKET TRUCKS (2026-11-13) — the first relaxation D-24 anticipated. A fleet may also run a
+// load with an OUTSIDER: an independent driver on THEIR OWN truck, hired for this one booking.
+// That branch opens only when the carrier names a market hire (an offer the driver accepted)
+// AND the requested crew is exactly that hire AND the truck is owned by that very driver. Any
+// mismatch falls through to the unchanged own-fleet rule, so a fleet can never slip someone
+// else's truck in under a market offer, and a driver without a truck of their own can never be
+// an outsider.
 export async function mayExecuteFor(
-  carrier: { fleetOwnerId: string },
+  carrier: { fleetOwnerId: string; marketHire?: MarketHire | null },
   assets: { vehicleId: string; driverId: string },
   lookups: ExecutionLookups = LIVE_LOOKUPS,
 ): Promise<FleetError | null> {
+  const hire = carrier.marketHire
+  if (hire && hire.driverId === assets.driverId && hire.vehicleId === assets.vehicleId) {
+    const owned = lookups.driverVehicle ? await lookups.driverVehicle(assets.driverId, assets.vehicleId) : null
+    if (!owned) return new FleetError("That truck is not registered to this driver", 'NOT_FOUND', 404)
+    return null
+  }
+
   // The truck must be the carrier's own. Scoped by fleet_owner_id, so another
   // fleet's truck — or a solo driver's — is indistinguishable from one that does not
   // exist at all.
@@ -240,7 +267,7 @@ export async function assignDriverAndVehicle(input: AssignInput): Promise<Assign
   // argument is what keeps "who won the work" and "whose assets run it" two facts
   // rather than one. mayExecuteFor is where they are (still) required to coincide.
   const refusal = await mayExecuteFor(
-    { fleetOwnerId: input.fleetOwnerId },
+    { fleetOwnerId: input.fleetOwnerId, marketHire: input.marketOffer ?? null },
     { vehicleId: input.vehicleId, driverId: input.driverId },
   )
   if (refusal) throw refusal
@@ -250,7 +277,9 @@ export async function assignDriverAndVehicle(input: AssignInput): Promise<Assign
   // lookup) and refuse an overload BEFORE we commit a crew. A load exceeding the truck's
   // rated capacity is a booking that cannot lawfully or safely move, so it is refused at
   // the binding point regardless of how the booking arrived (auction award or direct-attach).
-  const vehicleForCapacity = await getFleetVehicle(input.fleetOwnerId, input.vehicleId)
+  const vehicleForCapacity = input.marketOffer
+    ? await getDriverOwnedVehicle(input.driverId, input.vehicleId)
+    : await getFleetVehicle(input.fleetOwnerId, input.vehicleId)
   if (vehicleForCapacity) assertVehicleWithinCapacity(booking, vehicleForCapacity)
 
   // (3) D-19 — the truck is committed to one trip at a time. The insert below is

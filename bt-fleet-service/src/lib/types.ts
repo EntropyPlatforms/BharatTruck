@@ -36,6 +36,8 @@ export type ErrorCode =
   | 'ALREADY_IN_ANOTHER_FLEET'
   | 'PENDING_INVITE_ELSEWHERE'
   | 'SUSPENDED_IN_FLEET'
+  // Market trucks (routes/market.ts): the driver is already this fleet's member — assign directly.
+  | 'IN_YOUR_FLEET'
 
 export class FleetError extends Error {
   constructor(

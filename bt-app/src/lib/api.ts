@@ -29,6 +29,7 @@ import type {
   PaymentMode, PaymentStatus, SettleResult, PaymentConfig, OnlineOrder, CheckoutSuccess, OnlineSync,
   DocumentScan, ScanKind,
   TripExpense,
+  MarketDriver, MarketOffer, MarketLoadOffer,
   CarrierCard,
   CarrierKind,
   PreferredCarriers,
@@ -551,6 +552,37 @@ export function assignToBooking(bookingId: string, driver_id: string, vehicle_id
     assignment: { id: string; booking_id: string; driver_id: string; vehicle_id: string }
     booking: Booking
   }>(`/fleet/bookings/${bookingId}/assign`, { method: 'POST', body: JSON.stringify({ driver_id, vehicle_id }) })
+}
+
+// ── Market trucks (hire an outsider with their own truck for one load) ──────────
+
+/** Find a driver who owns a truck by their exact mobile number. 404 when there is none. */
+export function findMarketDriver(mobile: string) {
+  return request<MarketDriver>(`/fleet/market-drivers?mobile=${encodeURIComponent(mobile)}`)
+}
+
+/** Offer one of the fleet's accepted loads to that driver and truck. Nothing is bound until they accept. */
+export function sendMarketOffer(bookingId: string, driver_id: string, vehicle_id: string) {
+  return request<MarketOffer>(`/fleet/bookings/${bookingId}/market-offer`, {
+    method: 'POST', body: JSON.stringify({ driver_id, vehicle_id }),
+  })
+}
+
+export function getMarketOffer(bookingId: string) {
+  return request<MarketOffer | null>(`/fleet/bookings/${bookingId}/market-offer`)
+}
+
+export function withdrawMarketOffer(bookingId: string) {
+  return request<{ withdrawn: true }>(`/fleet/bookings/${bookingId}/market-offer`, { method: 'DELETE' })
+}
+
+/** Driver side: fleets that want to hire my truck. */
+export function listMyMarketOffers() {
+  return request<MarketLoadOffer[]>('/fleet/market-offers')
+}
+
+export function answerMarketOffer(bookingId: string, action: 'accept' | 'decline') {
+  return request<{ booking_id?: string; declined?: true }>(`/fleet/market-offers/${bookingId}/${action}`, { method: 'POST' })
 }
 
 /**
